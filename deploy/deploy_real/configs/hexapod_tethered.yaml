@@ -1,0 +1,44 @@
+# 
+control_dt: 0.02
+
+msg_type: "go"     # "hg" or "go"
+imu_type: "torso"    # "torso" or "pelvis"
+
+lowcmd_topic: "rt/lowcmd"
+lowstate_topic: "rt/lowstate"
+
+policy_path: "{ROOT_DIR}/deploy/pre_train/hexapod_tethered/policy_28000.pt"
+
+joint2motor_idx: [13,18,17,7,9,8,1,3,2,16,15,14,10,11,12,4,6,5]
+
+kps: [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50]
+kds: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
+default_angles: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# 18 个腿部关节的顺序（action 索引 -> joint name）：
+#   0 : RF_HAA
+#   1 : RF_HFE
+#   2 : RF_KFE
+#   3 : RM_HAA
+#   4 : RM_HFE
+#   5 : RM_KFE
+#   6 : RB_HAA
+#   7 : RB_HFE
+#   8 : RB_KFE
+#   9 : LF_HAA
+#  10 : LF_HFE
+#  11 : LF_KFE
+#  12 : LM_HAA
+#  13 : LM_HFE
+#  14 : LM_KFE
+#  15 : LB_HAA
+#  16 : LB_HFE
+#  17 : LB_KFE
+#  18 : cable (tendon actuator)
+
+
+command_scale: [0.8, 0.5, 0.5]
+
+action_scale: 0.25
+num_actions: 19
+num_obs: 70
