@@ -15,6 +15,7 @@ from hexapod_tethered_utils.joystick_reader import Gamepad
 
 from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
 from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
+from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
 
 import config_hexapod
@@ -102,6 +103,11 @@ class Controller:
         self.pitch_started = self.pitch_sensor.start()
         if not self.pitch_started:
             print("[WARNING] Pitch sensor start failed. Will use zero data.")
+
+        self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB4', baudrate=115200)
+        self.yaw_started = self.yaw_sensor.start()
+        if not self.yaw_started:
+            print("[WARNING] Yaw sensor start failed. Will use zero data.")
 
     def __del__(self):
         # Close all log files
@@ -254,6 +260,10 @@ class Controller:
         pitch_value = self.pitch_sensor.get_angle()
         if pitch_value is None:
             pitch_value = 0.0
+            
+        yaw_value = self.yaw_sensor.get_angle()
+        if yaw_value is None:
+            yaw_value = 0.0
 
         if imu_data is None:
             # 如果没有 IMU 数据，使用全 0
@@ -296,7 +306,7 @@ class Controller:
         self.obs[64:67] = self.cmd * self.config.command_scale
         
         self.obs[67] = np.float32(tension_value)
-
+        self.obs[68] = np.float32(yaw_value)
         self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
