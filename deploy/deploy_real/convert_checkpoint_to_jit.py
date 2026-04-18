@@ -106,8 +106,8 @@ class PolicyWrapper(nn.Module):
 
 
 if __name__ == "__main__":
-    path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod/model_30000.pt"
-    save_path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod/policy_30000.pt"
+    path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod/model_2500.pt"
+    save_path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod/policy_2500.pt"
 
     print(f"Loading checkpoint from: {path}")
     checkpoint = torch.load(path, map_location='cpu')
