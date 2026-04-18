@@ -309,8 +309,9 @@ class Controller:
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
         self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
-        # action clip -1 1
-        self.action = np.clip(self.action, -1.0, 1.0)
+        # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
+        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[18] = np.clip(self.action[18], 0.0, 1.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
