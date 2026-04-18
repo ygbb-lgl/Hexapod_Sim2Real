@@ -37,11 +37,6 @@ class Controller:
                 self.gamepad = None
                 print(f"[gamepad] disabled due to error: {e}")
 
-        self.tension_value = 0.0
-
-        self._pitch_failed = False
-        self._pitch_value = 0.0
-
         self.ang_vel_scale = config.ang_vel
         self.dof_pos_scale = config.dof_pos
         self.dof_vel_scale = config.dof_vel
@@ -81,29 +76,31 @@ class Controller:
             self.log_writers.append(writer)
             print(f'[Logging] Created {filepath}')
 
+        # 电机初始化 EtherCAT
         self.robot = RL_Real_PySOEM('enp86s0')
         self.robot_start = self.robot.start()
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
 
+        # imu init
         self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
-
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
 
+        # 六位力传感器初始化 RS232
         self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB2', baudrate=115200)
-
         self.tension_started = self.tension_sensor.start()
         if not self.tension_started:
             print("[WARNING] Tension sensor start failed. Will use zero data.")
         
+        # 末端绝对角度传感器初始化 RS485
         self.pitch_sensor = CableEndPitchSensor(port='/dev/ttyUSB3', baudrate=9600)
-
         self.pitch_started = self.pitch_sensor.start()
         if not self.pitch_started:
             print("[WARNING] Pitch sensor start failed. Will use zero data.")
 
+        # 磁栅编码器初始化 RS485
         self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB4', baudrate=115200)
         self.yaw_started = self.yaw_sensor.start()
         if not self.yaw_started:
