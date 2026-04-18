@@ -28,5 +28,6 @@ class Config:
             self.command_scale = config["command_scale"]
             self.action_scale = config["action_scale"]
 
+            self.num_leggeds_actions = config["num_leggeds_actions"]
             self.num_actions = config["num_actions"]
             self.num_obs = config["num_obs"] 

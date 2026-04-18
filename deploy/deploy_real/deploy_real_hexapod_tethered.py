@@ -18,9 +18,9 @@ from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
 from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
 
-import config_hexapod
+import config_hexapod_tethered
 
-from config_hexapod import Config
+from config_hexapod_tethered import Config
 
 
 class Controller:
@@ -50,8 +50,8 @@ class Controller:
         self._warm_up()
         
         # 初始化状态和命令
-        self.qj = np.zeros(config.num_actions,dtype=np.float32)
-        self.dqj = np.zeros(config.num_actions,dtype=np.float32)
+        self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.action = np.zeros(config.num_actions,dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     # parser.add_argument("net", type=str, help="network interface")
     # args = parser.parse_args()
 
-    config_path = f"{config_hexapod.ROOT_DIR}/deploy/deploy_real/configs/hexapod.yaml"
+    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod.yaml"
     config = Config(config_path)
 
     # ChannelFactoryInitialize(0, args.net)
