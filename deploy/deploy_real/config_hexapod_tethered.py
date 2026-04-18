@@ -14,18 +14,15 @@ class Config:
 
             self.control_dt = config["control_dt"]
 
+            self.ang_vel = config["ang_vel_scale"]
+            self.dof_pos = config["dof_pos_scale"]
+            self.dof_vel = config["dof_vel_scale"]
+            self.lin_vel = config["lin_vel_scale"]
+
             self.joint2motor_idx = config["joint2motor_idx"]
-
-            self.msg_type = config["msg_type"]
-            self.imu_type = config["imu_type"]
-
-            self.lowcmd_topic = config["lowcmd_topic"]
-            self.lowstate_topic = config["lowstate_topic"]
 
             self.policy_path = config["policy_path"].replace("{ROOT_DIR}", ROOT_DIR)
 
-            self.kps = np.array(config["kps"],dtype=np.float32)
-            self.kds = np.array(config["kds"],dtype=np.float32)
             self.default_angles = np.array(config["default_angles"], dtype=np.float32)
 
             self.command_scale = config["command_scale"]

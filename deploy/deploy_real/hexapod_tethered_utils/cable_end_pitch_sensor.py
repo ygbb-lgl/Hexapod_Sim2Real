@@ -71,148 +71,98 @@ class AbsoluteAngleSensor:
         except Exception as e:
             print(f"解析浮点数时发生错误: {e}")
             return None
-class AngleManager:
-    """后台线程持续读取角度，并缓存最新值（主循环里只做 getter，不阻塞）。"""
-
-    def __init__(
-        self,
-        port=None,
-        baudrate=9600,
-        slave_id=2,
-        timeout=0.2,
-        poll_hz=10.0,
-    ):
-        self._port = port
-        self._baudrate = baudrate
-        self._slave_id = slave_id
-        self._timeout = timeout
-        self._poll_period = 1.0 / float(poll_hz) if poll_hz and poll_hz > 0 else 0.1
+class CableEndPitchSensor:
+    """后台线程持续读取角度，并缓存最新值。提供简单的 start/get_angle/stop 接口。"""
+    def __init__(self, port, baudrate=9600, slave_id=2, timeout=0.2, poll_hz=10.0):
+        self.port = port
+        self.baudrate = baudrate
+        self.slave_id = slave_id
+        self.timeout = timeout
+        self.poll_period = 1.0 / float(poll_hz) if poll_hz and poll_hz > 0 else 0.1
 
         self._lock = threading.Lock()
         self._last_angle = None
         self._last_ts = 0.0
-        self._failed = False
 
-        self._stop_evt = threading.Event()
-        self._thread = None
-        self._sensor = None
+        self.is_running = False
+        self.read_thread = None
+        self.sensor = None
 
-    def start(self):
-        if self._thread is not None and self._thread.is_alive():
-            return
-        if self._failed:
-            return
+    def start(self) -> bool:
+        try:
+            self.sensor = AbsoluteAngleSensor(
+                port=self.port,
+                baudrate=self.baudrate,
+                slave_id=self.slave_id,
+                timeout=self.timeout,
+            )
+            print(f"成功打开末端角度传感器串口 {self.port}")
+        except serial.SerialException as e:
+            print(f"打开末端角度传感器串口 {self.port} 失败: {e}")
+            return False
 
-        resolved_port = self._port or CABLE_PITCH_SERIAL_PORT
-        self._sensor = AbsoluteAngleSensor(
-            port=resolved_port,
-            baudrate=self._baudrate,
-            slave_id=self._slave_id,
-            timeout=self._timeout,
-        )
-
-        self._stop_evt.clear()
-        self._thread = threading.Thread(
+        self.is_running = True
+        self.read_thread = threading.Thread(
             target=self._read_loop,
             name="cable_end_pitch_reader",
             daemon=True,
         )
-        self._thread.start()
+        self.read_thread.start()
+        return True
 
     def _read_loop(self):
-        try:
-            while not self._stop_evt.is_set():
-                angle = None
-                try:
-                    if self._sensor is not None:
-                        angle = self._sensor.read_angle_float()
-                except Exception:
-                    # 传感器读异常：直接标记失败并退出线程，避免刷屏
-                    self._failed = True
-                    return
+        while self.is_running:
+            angle = None
+            try:
+                if self.sensor is not None:
+                    angle = self.sensor.read_angle_float()
+            except Exception as e:
+                print(f"末端角度传感器读取发生异常: {e}")
+                self.is_running = False
+                break
 
-                if angle is not None:
-                    with self._lock:
-                        self._last_angle = float(angle)
-                        self._last_ts = time.time()
+            if angle is not None:
+                with self._lock:
+                    self._last_angle = float(angle)
+                    self._last_ts = time.time()
 
-                time.sleep(self._poll_period)
-        finally:
-            self.close()
+            time.sleep(self.poll_period)
 
     def get_angle(self):
-        self.start()
+        """主控制循环调用接口，非阻塞返回最近一次的有效角度"""
         with self._lock:
             return self._last_angle
 
     def get_angle_and_timestamp(self):
-        self.start()
         with self._lock:
             return self._last_angle, self._last_ts
 
-    def close(self):
-        self._stop_evt.set()
+    def stop(self):
+        self.is_running = False
+        if self.read_thread and self.read_thread.is_alive():
+            self.read_thread.join()
+        if self.sensor is not None and getattr(self.sensor, "ser", None) is not None:
+            try:
+                self.sensor.ser.close()
+                print("末端角度传感器串口已关闭")
+            except Exception:
+                pass
+
+
+if __name__ == "__main__":
+    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
+    
+    sensor = CableEndPitchSensor(port=CABLE_PITCH_SERIAL_PORT, baudrate=9600)
+    
+    if sensor.start():
+        print("角度传感器读数线程已启动，按 Ctrl+C 停止。")
         try:
-            if self._sensor is not None and getattr(self._sensor, "ser", None) is not None:
-                try:
-                    self._sensor.ser.close()
-                except Exception:
-                    pass
-        finally:
-            self._sensor = None
-
-
-_default_manager = None
-
-
-def get_default_manager():
-    global _default_manager
-    if _default_manager is None:
-        _default_manager = AngleManager()
-        atexit.register(_default_manager.close)
-    return _default_manager
-
-
-def get_cable_end_pitch_angle():
-    """非阻塞：返回后台线程缓存的最新角度（度）。
-
-    - 首次调用会自动启动后台线程。
-    - 串口通过本文件的 SERIAL_PORT 指定。
-    """
-    mgr = get_default_manager()
-    return mgr.get_angle()
-
-# 封装的函数：在main函数中调用此函数即可获取角度
-def get_angle_value(serial_port=CABLE_PITCH_SERIAL_PORT):
-    sensor = None
-    try:
-        # 初始化传感器对象
-        sensor = AbsoluteAngleSensor(port=serial_port)
-        # 读取角度值
-        angle = sensor.read_angle_float()
-        return angle
-    except Exception as e:
-        print(f"error: {e}")
-        return None
-
-def continuous_read_angle(serial_port=CABLE_PITCH_SERIAL_PORT, interval=0.1):
-    sensor = AbsoluteAngleSensor(port=serial_port)
-    try:
-        while True:
-            angle = sensor.read_angle_float()
-            print(f"当前角度值为: {angle:.6f} 度")
-            time.sleep(interval)
-    except KeyboardInterrupt:
-        print("停止连续读取。")
-    finally:
-        sensor.ser.close()
-
-def angle_stream(serial_port, interval=0.1):
-    sensor = AbsoluteAngleSensor(port=serial_port)
-    try:
-        while True:
-            angle = sensor.read_angle_float()
-            yield angle
-            time.sleep(interval)
-    finally:
-        sensor.ser.close()
+            while True:
+                latest = sensor.get_angle()
+                if latest is not None:
+                    print(f"cable_end_pitch_angle = {latest:.6f} 度")
+                time.sleep(0.1) # 模拟主控制循环抓取数据
+        except KeyboardInterrupt:
+            print("\n正在停止程序...")
+            sensor.stop()
+            print("程序已退出。")

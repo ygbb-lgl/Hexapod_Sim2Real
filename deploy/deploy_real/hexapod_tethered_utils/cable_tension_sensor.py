@@ -86,9 +86,9 @@ class SensorDataParser:
                 self.buffer = self.buffer[head_index + 1:]
 
 
-class SerialManager:
+class CableTensionSensor:
     """
-    管理串口连接、发送指令和接收数据
+    封装的传感器类，提供类似 IMUSDK 的对象实例化、启动线程和提取数据的接口
     """
     def __init__(self, port, baudrate=115200):
         self.port = port
@@ -108,9 +108,9 @@ class SerialManager:
                 stopbits=serial.STOPBITS_TWO,
                 timeout=1
             )
-            print(f"成功打开串口 {self.port}")
+            print(f"成功打开拉力传感器串口 {self.port}")
         except serial.SerialException as e:
-            print(f"打开串口 {self.port} 失败: {e}")
+            print(f"打开拉力传感器串口 {self.port} 失败: {e}")
             return False
 
         self.is_running = True
@@ -165,49 +165,23 @@ class SerialManager:
             self.read_thread.join()
         if self.ser and self.ser.is_open:
             self.ser.close()
-            print("串口已关闭")
-
-
-
-
-_default_manager_lock = threading.Lock()
-_default_manager: Optional[SerialManager] = None
-
-
-def get_default_manager(port: Optional[str] = None, baudrate: int = 115200) -> SerialManager:
-    """模块级单例：用于在主控制循环中最小改动地获取张力。"""
-    global _default_manager
-    with _default_manager_lock:
-        if _default_manager is None:
-            resolved_port = port or CABLE_TENSION_SERIAL_PORT
-            manager = SerialManager(port=resolved_port, baudrate=baudrate)
-            ok = manager.start()
-            if not ok:
-                raise RuntimeError(f"Failed to open serial port: {resolved_port}")
-            _default_manager = manager
-        return _default_manager
-
-
-def get_cable_tension(port: Optional[str] = None, baudrate: int = 115200) -> Optional[float]:
-    """便捷函数：返回最新张力（float 或 None）；首次调用会自动打开串口并启动后台线程。"""
-    manager = get_default_manager(port=port, baudrate=baudrate)
-    return manager.get_cable_tension()
+            print("拉力传感器串口已关闭")
 
 
 if __name__ == "__main__":    
-    manager = SerialManager(port=CABLE_TENSION_SERIAL_PORT, baudrate=115200)
+    sensor = CableTensionSensor(port=CABLE_TENSION_SERIAL_PORT, baudrate=115200)
     
-    if manager.start():
-        print("程序正在运行，按 Ctrl+C 停止。")
+    if sensor.start():
+        print("传感器测力线程已启动，按 Ctrl+C 停止。")
         try:
             while True:
-                latest = manager.get_cable_tension()
+                latest = sensor.get_cable_tension()
                 if latest is not None:
                     print(f"cable_tension = {latest:.6f}")
-                time.sleep(1)
+                time.sleep(0.1)  # 模拟主控制循环提取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")
-            manager.stop()
+            sensor.stop()
             print("程序已退出。")
 
 
