@@ -1,6 +1,5 @@
 import ctypes
 import threading
-from typing import List
 
 # Constants defined in motor_control.c
 KP_MIN = 0.0
@@ -15,12 +14,6 @@ T_MIN = -30.0
 T_MAX = 30.0
 I_MIN = -30.0
 I_MAX = 30.0
-
-# Servo mode ranges (from official C SDK comments)
-SERVO_SPD_RPM_MIN = -18000.0
-SERVO_SPD_RPM_MAX = 18000.0
-SERVO_CUR_01A_MIN = 0
-SERVO_CUR_01A_MAX = 3000
 
 # ==================== Data Structures ====================
 
@@ -133,16 +126,6 @@ def uint_to_float(x_int, x_min, x_max, bits):
 def clamp(val, min_val, max_val):
     return max(min_val, min(val, max_val))
 
-
-def _float_to_u8_le(x: float) -> List[int]:
-    """Pack float32 into little-endian 4 bytes (b0..b3).
-
-    Note: official C uses a union and then accesses buf[0..3].
-    """
-    b = ctypes.c_float(float(x))
-    raw = bytes(b)
-    return [raw[0], raw[1], raw[2], raw[3]]
-
 # ==================== Core Logic ====================
 
 def send_motor_ctrl_cmd(msg, passage, motor_id, kp, kd, pos, spd, tor):
@@ -183,44 +166,6 @@ def send_motor_ctrl_cmd(msg, passage, motor_id, kp, kd, pos, spd, tor):
     motor_slot.data[5] = (spd_int >> 4) & 0xFF
     motor_slot.data[6] = ((spd_int & 0x0F) << 4) | (tor_int >> 8)
     motor_slot.data[7] = tor_int & 0xFF
-
-
-def set_motor_speed(msg, passage, motor_id, spd_rpm, cur_01a, ack_status=1):
-        """Servo speed control (official C: set_motor_speed).
-
-        - spd_rpm: desired speed in rpm, range [-18000, 18000]
-        - cur_01a: current threshold in 0.1A units, range [0, 3000]
-        - ack_status: 0=no ack, 1~3=response frame type
-
-        The official C sets:
-            can_ide=0, dlc=7,
-            data[0]=0x40|ack_status,
-            data[1..4]=float bytes (buf[3],buf[2],buf[1],buf[0])
-            data[5..6]=cur high/low
-        """
-        idx = passage - 1
-        motor_slot = msg.motor[idx]
-
-        if ack_status < 0 or ack_status > 3:
-                raise ValueError(f"ack_status must be 0..3, got {ack_status}")
-
-        spd_rpm = float(clamp(spd_rpm, SERVO_SPD_RPM_MIN, SERVO_SPD_RPM_MAX))
-        cur_01a = int(clamp(int(cur_01a), SERVO_CUR_01A_MIN, SERVO_CUR_01A_MAX))
-
-        msg.can_ide = 0
-        motor_slot.rtr = 0
-        motor_slot.id = int(motor_id)
-        motor_slot.dlc = 7
-
-        b0, b1, b2, b3 = _float_to_u8_le(spd_rpm)
-        motor_slot.data[0] = 0x40 | int(ack_status)
-        # C uses buf[3],buf[2],buf[1],buf[0]
-        motor_slot.data[1] = b3
-        motor_slot.data[2] = b2
-        motor_slot.data[3] = b1
-        motor_slot.data[4] = b0
-        motor_slot.data[5] = (cur_01a >> 8) & 0xFF
-        motor_slot.data[6] = cur_01a & 0xFF
 
 def _u8_to_float_le(b0: int, b1: int, b2: int, b3: int) -> float:
     return ctypes.c_float.from_buffer_copy(bytes([b0, b1, b2, b3])).value
