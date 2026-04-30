@@ -89,19 +89,19 @@ class Controller:
             print("[WARNING] IMU start failed. Will use zero data.")
 
         # 六位力传感器初始化 RS232
-        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB2', baudrate=115200)
+        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB_cable_tension', baudrate=115200)
         self.tension_started = self.tension_sensor.start()
         if not self.tension_started:
             print("[WARNING] Tension sensor start failed. Will use zero data.")
         
         # 末端绝对角度传感器初始化 RS485
-        self.pitch_sensor = CableEndPitchSensor(port='/dev/ttyUSB3', baudrate=9600)
+        self.pitch_sensor = CableEndPitchSensor(port='/dev/ttyUSB_pitch', baudrate=115200)
         self.pitch_started = self.pitch_sensor.start()
         if not self.pitch_started:
             print("[WARNING] Pitch sensor start failed. Will use zero data.")
 
         # 磁栅编码器初始化 RS485
-        self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB4', baudrate=115200)
+        self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB_yaw', baudrate=115200)
         self.yaw_started = self.yaw_sensor.start()
         if not self.yaw_started:
             print("[WARNING] Yaw sensor start failed. Will use zero data.")

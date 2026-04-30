@@ -6,10 +6,10 @@ import struct
 import serial
 
 
-CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB1"
+CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
 
 class AbsoluteAngleSensor:
-    def __init__(self, port, baudrate=9600, slave_id=2, timeout=1):
+    def __init__(self, port, baudrate=115200, slave_id=2, timeout=1):
         self.ser = serial.Serial(port, baudrate, timeout=timeout)
         self.slave_id = slave_id
 
@@ -150,9 +150,9 @@ class CableEndPitchSensor:
 
 
 if __name__ == "__main__":
-    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
+    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB_pitch"
     
-    sensor = CableEndPitchSensor(port=CABLE_PITCH_SERIAL_PORT, baudrate=9600)
+    sensor = CableEndPitchSensor(port=CABLE_PITCH_SERIAL_PORT, baudrate=115200)
     
     if sensor.start():
         print("角度传感器读数线程已启动，按 Ctrl+C 停止。")

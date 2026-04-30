@@ -13,7 +13,7 @@ PULL_FORCE_OFFSET = 2.1008
 PULL_FORCE_SCALE = 0.6057
 
 
-CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB0"  # 按实际设备修改，例如 /dev/ttyACM0
+CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB_cable_tension"  # 按实际设备修改，例如 /dev/ttyACM0
 
 
 class SensorDataParser:

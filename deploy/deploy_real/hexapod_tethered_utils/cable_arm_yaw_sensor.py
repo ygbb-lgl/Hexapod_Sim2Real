@@ -113,7 +113,7 @@ class CableArmYawSensor:
 
 
 if __name__ == "__main__":
-    TEST_PORT = '/dev/ttyUSB0'  # 依实际情况修改
+    TEST_PORT = '/dev/ttyUSB_yaw'  # 依实际情况修改
     sensor = CableArmYawSensor(port=TEST_PORT, baudrate=115200)
     
     if sensor.start():
