@@ -110,7 +110,7 @@ class SensorDataParser:
                                 continue
 
                     fx, fy, fz, mx, my, mz = struct.unpack('<ffffff', frame[6:30])
-                    # 应用零点补偿
+                    #应用零点补偿
                     if self.is_zero_calibrated:
                         compensated_values = raw_values - self.zero_offsets
                     else:
