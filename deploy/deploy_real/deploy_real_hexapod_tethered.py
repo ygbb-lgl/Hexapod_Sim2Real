@@ -369,7 +369,7 @@ if __name__ == "__main__":
     # parser.add_argument("net", type=str, help="network interface")
     # args = parser.parse_args()
 
-    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod.yaml"
+    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod_tethered.yaml"
     config = Config(config_path)
 
     # ChannelFactoryInitialize(0, args.net)
