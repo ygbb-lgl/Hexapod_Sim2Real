@@ -7,3 +7,6 @@
 ```bash
 sudo /home/lgl/anaconda3/envs/mujoco_rl/bin/python /home/lgl/Hexapod_Sim2Real/deploy/deploy_real/deploy_real_hexapod.py enp109s0
 ```
+```bash
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_real_hexapod_tethered.py enp86s0
+```
