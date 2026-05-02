@@ -9,7 +9,8 @@ from imu_sdk.imu_sdk import IMUSDK
 
 from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd
 
-from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
+from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
+from motor_igh_sdk.deploy_real_el4090_speed_pysoem import RL_Real_Speed_PySOEM
 
 
 from hexapod_tethered_utils.joystick_reader import Gamepad
@@ -77,12 +78,17 @@ class Controller:
             self.log_writers.append(writer)
             print(f'[Logging] Created {filepath}')
 
-        # 电机初始化 EtherCAT（单 Master）：18 关节 PD + 额外 spool 速度电机 motor_id=19 (slave_idx=3, passage=1)
-        # 这里的 'enp86s0' 就是网口名；如果你要换网口，改成你的实际 NIC。
-        self.robot = RL_Real_PySOEM_WithSpoolSpeed('enp86s0')
+        # 电机初始化 EtherCAT
+        self.robot = RL_Real_PySOEM('enp86s0')
         self.robot_start = self.robot.start()
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
+        
+        # Spool初始化 EtherCAT
+        self.spool = RL_Real_Speed_PySOEM('enp86s0')
+        self.spool_start = self.spool.start()
+        if not self.spool_start:
+            print("[WARNING] Spool start failed. Will use zero data.")
 
         # imu init
         self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
@@ -313,16 +319,14 @@ class Controller:
 
         # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
         self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
-        self.action[18] = np.clip(self.action[18], 0.0, 2.0)
+        self.action[18] = np.clip(self.action[18], 0.0, 1.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
-        
-        target_tension = self.action[18] * self.config.tension_action_scale
 
         for i in range(18):
             q = target_dof_pos[i]
-            #motor_id = int(self.config.joint2motor_idx[i])
+            motor_id = int(self.config.joint2motor_idx[i])
             
             # Read actual motor position
             actual_pos = self.robot.motor_state_buffer.position[i]
@@ -330,15 +334,15 @@ class Controller:
 
             # Add feedforward torque for Group2 joints with correct sign
             # Sign depends on motor_direction to ensure torque assists motion
-            # group2_motor_ids = {18, 9, 3, 15, 11, 6}
-            # if motor_id in group2_motor_ids:
-            #     # Get motor direction (+1 or -1)
-            #     motor_dir = self.config.motor_directions[i]
-            #     # Apply feedforward in the direction that assists gravity compensation
-            #     # If motor_dir is -1, we need to flip the sign
-            #     feedforward_torque = 0.0 * motor_dir
-            # else:
-            #     feedforward_torque = 0.0
+            group2_motor_ids = {18, 9, 3, 15, 11, 6}
+            if motor_id in group2_motor_ids:
+                # Get motor direction (+1 or -1)
+                motor_dir = self.config.motor_directions[i]
+                # Apply feedforward in the direction that assists gravity compensation
+                # If motor_dir is -1, we need to flip the sign
+                feedforward_torque = 1.5 * motor_dir
+            else:
+                feedforward_torque = 0.0
 
             # Log to CSV
             self.log_writers[i].writerow([
@@ -354,7 +358,7 @@ class Controller:
             self.robot.motor_command_buffer.kd[i] = float(self._kd_policy[i])
             self.robot.motor_command_buffer.target_position[i] = q
             self.robot.motor_command_buffer.target_velocity[i] = 0.0
-            self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
+            self.robot.motor_command_buffer.feedforward_torque[i] = feedforward_torque
 
 
             # motor_id 仅用于对照打印

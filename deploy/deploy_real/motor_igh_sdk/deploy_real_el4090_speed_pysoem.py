@@ -205,7 +205,7 @@ class RL_Real_Speed_PySOEM:
         print("Starting Process Data Loop (Speed Mode)...")
         self.running = True
 
-        TARGET_FREQ = 150.0
+        TARGET_FREQ = 250.0
         dt = 1.0 / TARGET_FREQ
         next_wake_time = time.perf_counter()
 
