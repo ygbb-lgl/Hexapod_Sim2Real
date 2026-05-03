@@ -12,7 +12,7 @@ import threading
 import pysoem
 
 # ==================== Configuration ====================
-IFNAME = "enp109s0"  # <--- 修改为你的网卡
+IFNAME = "enp86s0"  # <--- 修改为你的网卡
 
 
 class RL_Real_Speed_PySOEM:
@@ -26,7 +26,7 @@ class RL_Real_Speed_PySOEM:
     注意：此模式下，电机内部是速度伺服；这里仍然会解析回读（位置/速度/电流）用于监控。
     """
 
-    def __init__(self, ifname: str, *, motor_id: int = 1):
+    def __init__(self, ifname: str, *, motor_id: int = 19):
         self.ifname = ifname
         self.single_motor_id = int(motor_id)
 
@@ -265,10 +265,10 @@ if __name__ == "__main__":
         IFNAME = sys.argv[1]
 
     # 可选: 第二个参数指定 motor_id（更方便单电机测试）
-    motor_id = int(sys.argv[2]) if len(sys.argv) > 2 else 4
+    motor_id = int(sys.argv[2]) if len(sys.argv) > 2 else 19
 
     # 可选: 第三个参数 指定恒速转动指令（rpm）
-    const_rpm = float(sys.argv[3]) if len(sys.argv) > 3 else 100.0
+    const_rpm = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
 
     print(f"Launching Speed Mode on interface {IFNAME}, motor_id={motor_id}")
 
