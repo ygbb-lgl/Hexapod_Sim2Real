@@ -1,4 +1,5 @@
-from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
+#from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
+from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
 
 class MotorMode:
     PR = 0  # Series Control for Pitch/Roll Joints
@@ -7,7 +8,7 @@ class MotorMode:
 
 
 # 进入阻尼模式，关电机力矩，增加阻尼
-def create_damping_cmd(robot: RL_Real_PySOEM):
+def create_damping_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
     size = 18
     for i in range(size):
         robot.motor_command_buffer.kp[i] = 0.0
@@ -19,7 +20,7 @@ def create_damping_cmd(robot: RL_Real_PySOEM):
 
 
 # 进入零力模式，关电机力矩，不增加阻尼
-def create_zero_cmd(robot: RL_Real_PySOEM):
+def create_zero_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
     size = 18
     for i in range(size):
         robot.motor_command_buffer.kp[i] = 0.0
@@ -28,3 +29,7 @@ def create_zero_cmd(robot: RL_Real_PySOEM):
         robot.motor_command_buffer.target_velocity[i] = 0.0
         robot.motor_command_buffer.feedforward_torque[i] = 0.0
 
+
+# 进入零速度模式
+def create_zero_velocity_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
+    robot.spool_command_buffer.target_speed_rpm[0] = 0.0

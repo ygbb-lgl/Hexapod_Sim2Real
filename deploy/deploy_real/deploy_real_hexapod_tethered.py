@@ -7,7 +7,7 @@ from datetime import datetime
 
 from imu_sdk.imu_sdk import IMUSDK
 
-from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd
+from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_velocity_cmd
 
 from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
 
@@ -167,6 +167,8 @@ class Controller:
         print("Waiting for the Y signal to default pos...")
         while self.gamepad.get_button_y() != 1:
             create_zero_cmd(self.robot)
+            # 零速度
+            create_zero_velocity_cmd(self.robot)
             time.sleep(self.config.control_dt)
 
     # 移动到默认位置

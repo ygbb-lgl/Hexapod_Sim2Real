@@ -1,6 +1,5 @@
 from re import S
 
-import numpy as np
 import serial
 import threading
 import time
@@ -26,41 +25,12 @@ class SensorDataParser:
         self._lock = threading.Lock()
         self.last_cable_tension: Optional[float] = None
         self.last_update_time: Optional[float] = None
-        self.zero_offsets = np.zeros(6)  # [Fx, Fy, Fz, Mx, My, Mz]
-        self.is_zero_calibrated = False
-        self.calibration_samples = []
-        self.calibrating = False
 
     def get_cable_tension(self) -> Optional[float]:
         """返回最近一次解析得到的张力（未解析到有效帧时为 None）。"""
         with self._lock:
             return self.last_cable_tension
 
-    def start_zero_calibration(self, num_samples=50):
-        """开始零点校准（应在无负载时调用）"""
-        print(f"开始零点校准，采集{num_samples}个样本...")
-        self.calibrating = True
-        self.calibration_samples = []
-        # 这里简化为计数，实际可能需要定时采集
-        
-    def process_calibration(self):
-        """处理采集的校准数据"""
-        if len(self.calibration_samples) == 0:
-            return
-            
-        # 计算平均值作为零点偏移
-        samples_array = np.array(self.calibration_samples)
-        self.zero_offsets = np.mean(samples_array, axis=0)
-        self.is_zero_calibrated = True
-        print(f"零点校准完成，偏移值：{self.zero_offsets}")
-        self.calibrating = False
-        self.calibration_samples = []
-
-    def get_zero_calibration_status(self) -> bool:
-        """返回是否已完成零点校准"""
-        with self._lock:
-            return self.is_zero_calibrated
-        
     def parse(self, data):
         self.buffer.extend(data)
         
@@ -99,24 +69,7 @@ class SensorDataParser:
                 # 校验成功，解析数据
                 # 数据从第6个字节开始，每个浮点数4字节
                 try:
-                    raw_values = np.array(struct.unpack('<ffffff', frame[6:30]))
-                    # 如果正在校准，收集样本
-                    with self._lock:
-                        if self.calibrating:
-                            self.calibration_samples.append(raw_values)
-                            if len(self.calibration_samples) >= 50:  # 采集50个样本
-                                self.process_calibration()
-                                self.buffer = self.buffer[head_index + 31:]
-                                continue
-
                     fx, fy, fz, mx, my, mz = struct.unpack('<ffffff', frame[6:30])
-                    #应用零点补偿
-                    if self.is_zero_calibrated:
-                        compensated_values = raw_values - self.zero_offsets
-                    else:
-                        compensated_values = raw_values
-                    fx, fy, fz, mx, my, mz = compensated_values
-
                     cable_tension = (-fz - PULL_FORCE_OFFSET) / PULL_FORCE_SCALE
                     with self._lock:
                         self.last_cable_tension = float(cable_tension)
@@ -133,9 +86,9 @@ class SensorDataParser:
                 self.buffer = self.buffer[head_index + 1:]
 
 
-class SerialManager:
+class CableTensionSensor:
     """
-    管理串口连接、发送指令和接收数据
+    封装的传感器类，提供类似 IMUSDK 的对象实例化、启动线程和提取数据的接口
     """
     def __init__(self, port, baudrate=115200):
         self.port = port
@@ -155,9 +108,9 @@ class SerialManager:
                 stopbits=serial.STOPBITS_TWO,
                 timeout=1
             )
-            print(f"成功打开串口 {self.port}")
+            print(f"成功打开拉力传感器串口 {self.port}")
         except serial.SerialException as e:
-            print(f"打开串口 {self.port} 失败: {e}")
+            print(f"打开拉力传感器串口 {self.port} 失败: {e}")
             return False
 
         self.is_running = True
@@ -182,6 +135,10 @@ class SerialManager:
             print(f"发送指令失败: {e}")
 
     def _configure_sensor(self):
+        # 执行传感器清零
+        self._send_command("ADJZF", "1;1;1;1;1;1;1;1")
+        time.sleep(10.0)  # 等待清零完成
+        print("传感器清零完成")
         # 设置采样率
         self._send_command("SMPF", "100")
         # 设置数据校验模式
@@ -206,68 +163,30 @@ class SerialManager:
     def get_cable_tension(self) -> Optional[float]:
         return self.parser.get_cable_tension()
 
-    def start_zero_calibration(self, num_samples=50):
-        """开始零点校准"""
-        self.parser.start_zero_calibration(num_samples)
-
-    def get_calibration_status(self) -> bool:
-        """获取零点校准状态"""
-        return self.parser.get_zero_calibration_status()
-
     def stop(self):
         self.is_running = False
         if self.read_thread:
             self.read_thread.join()
         if self.ser and self.ser.is_open:
             self.ser.close()
-            print("串口已关闭")
-
-
-
-
-_default_manager_lock = threading.Lock()
-_default_manager: Optional[SerialManager] = None
-
-
-def get_default_manager(port: Optional[str] = None, baudrate: int = 115200) -> SerialManager:
-    """模块级单例：用于在主控制循环中最小改动地获取张力。"""
-    global _default_manager
-    with _default_manager_lock:
-        if _default_manager is None:
-            resolved_port = port or CABLE_TENSION_SERIAL_PORT
-            manager = SerialManager(port=resolved_port, baudrate=baudrate)
-            ok = manager.start()
-            if not ok:
-                raise RuntimeError(f"Failed to open serial port: {resolved_port}")
-            _default_manager = manager
-        return _default_manager
-
-
-def get_cable_tension(port: Optional[str] = None, baudrate: int = 115200) -> Optional[float]:
-    """便捷函数：返回最新张力（float 或 None）；首次调用会自动打开串口并启动后台线程。"""
-    manager = get_default_manager(port=port, baudrate=baudrate)
-    return manager.get_cable_tension()
+            print("拉力传感器串口已关闭")
 
 
 if __name__ == "__main__":    
-    manager = SerialManager(port=CABLE_TENSION_SERIAL_PORT, baudrate=115200)
+    sensor = CableTensionSensor(port=CABLE_TENSION_SERIAL_PORT, baudrate=115200)
     
-    if manager.start():
-        print("程序正在运行，按 Ctrl+C 停止。")
-        manager.start_zero_calibration(num_samples=50)
-        print("等待校准完成...")
-        while not manager.get_calibration_status():
-            time.sleep(0.1)
-        print("零点校准完成！")
+    if sensor.start():
+        print("传感器测力线程已启动，按 Ctrl+C 停止。")
         try:
             while True:
-                latest = manager.get_cable_tension()
+                latest = sensor.get_cable_tension()
                 if latest is not None:
                     print(f"cable_tension = {latest:.6f}")
-                time.sleep(1)
+                time.sleep(0.1)  # 模拟主控制循环提取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")
-            manager.stop()
+            sensor.stop()
             print("程序已退出。")
+
 
 

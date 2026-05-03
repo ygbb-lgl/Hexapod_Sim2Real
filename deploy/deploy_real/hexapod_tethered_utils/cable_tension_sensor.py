@@ -135,6 +135,10 @@ class CableTensionSensor:
             print(f"发送指令失败: {e}")
 
     def _configure_sensor(self):
+        # # 执行传感器清零
+        # self._send_command("ADJZF", "1;1;1;1;1;1;1;1")
+        # time.sleep(10.0)  # 等待清零完成
+        # print("传感器清零完成")
         # 设置采样率
         self._send_command("SMPF", "100")
         # 设置数据校验模式
