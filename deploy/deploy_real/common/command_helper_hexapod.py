@@ -33,3 +33,5 @@ def create_zero_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
 # 进入零速度模式
 def create_zero_velocity_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
     robot.spool_command_buffer.target_speed_rpm[0] = 0.0
+    robot.spool_command_buffer.current_limit_01a[0] = 500
+    robot.spool_command_buffer.ack_status[0] = 1
