@@ -34,3 +34,20 @@ class Config:
             self.num_obs = config["num_obs"] 
 
             self.offset_deg = config["offset_deg"]
+
+            self.tsc_speed_sign = config["speed_sign"]
+            # Backward compatible: if only k_p_tension_rpm_per_unit is provided, use it for both forward/backward.
+            self.tsc_k_p_forward_rpm_per_unit = config["k_p_forward_rpm_per_unit"]
+            self.tsc_k_p_backward_rpm_per_unit = config["k_p_backward_rpm_per_unit"]
+
+            # Feedforward constants (paper-style)
+            self.tsc_ff_enabled = config["ff_enabled"]
+            self.tsc_ff_max_rpm = config["ff_max_rpm"]
+            self.tsc_ff_max_speed_mps = config["ff_max_speed_mps"]
+            self.tsc_ff_radius_m = config["ff_radius_m"]
+            self.tsc_Kff = config["Kff"]
+
+            self.tsc_tension_deadband = config["tension_deadband"]
+            self.tsc_speed_deadband_rpm = config["speed_deadband_rpm"]
+            self.tsc_tension_lpf_alpha = config["tension_lpf_alpha"]
+            self.tsc_speed_limit_rpm = config["speed_limit_rpm"]

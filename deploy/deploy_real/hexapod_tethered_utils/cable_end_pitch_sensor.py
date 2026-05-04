@@ -2,6 +2,7 @@ import atexit
 import threading
 import time
 import struct
+import math
 
 import serial
 
@@ -123,7 +124,7 @@ class CableEndPitchSensor:
 
             if angle is not None:
                 with self._lock:
-                    self._last_angle = float(angle)
+                    self._last_angle = math.radians(float(angle))  # 转换为弧度
                     self._last_ts = time.time()
 
             time.sleep(self.poll_period)

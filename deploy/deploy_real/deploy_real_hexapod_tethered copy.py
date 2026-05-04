@@ -9,8 +9,6 @@ from imu_sdk.imu_sdk import IMUSDK
 
 from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_velocity_cmd
 
-from hexapod_tethered_utils.tension_speed_controller import TensionSpeedController,TensionSpeedControllerConfig
-
 from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
 
 
@@ -82,30 +80,10 @@ class Controller:
 
         # 电机初始化 EtherCAT（单 Master）：18 关节 PD + 额外 spool 速度电机 motor_id=19 (slave_idx=3, passage=1)
         # 这里的 'enp86s0' 就是网口名；如果你要换网口，改成你的实际 NIC。
-        # Spool (cable) motor is fixed in this project:
-        # motor_id=19 on slave_idx=3 passage=1, direction=+1.
         self.robot = RL_Real_PySOEM_WithSpoolSpeed('enp86s0')
         self.robot_start = self.robot.start()
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
-
-        # Tension -> spool speed controller (pure numeric inputs, no sensor IO inside)
-        self.tension_speed_controller = TensionSpeedController(
-            TensionSpeedControllerConfig(
-                speed_sign=float(self.config.tsc_speed_sign),
-                k_p_forward_rpm_per_unit=float(self.config.tsc_k_p_forward_rpm_per_unit),
-                k_p_backward_rpm_per_unit=float(self.config.tsc_k_p_backward_rpm_per_unit),
-                ff_enabled=bool(self.config.tsc_ff_enabled),
-                ff_max_rpm=float(self.config.tsc_ff_max_rpm),
-                ff_max_speed_mps=float(self.config.tsc_ff_max_speed_mps),
-                ff_radius_m=float(self.config.tsc_ff_radius_m),
-                speed_limit_rpm=float(self.config.tsc_speed_limit_rpm),
-                speed_deadband_rpm=float(self.config.tsc_speed_deadband_rpm),
-                tension_deadband=float(self.config.tsc_tension_deadband),
-                tension_lpf_alpha=float(self.config.tsc_tension_lpf_alpha),
-                Kff=float(self.config.tsc_Kff),
-            )
-        )
 
         # imu init
         self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
@@ -399,22 +377,15 @@ class Controller:
             #print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
             
 
-        # Spool speed command from reference/actual tension alignment.
-        # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
-        # Paper-style: feedforward uses IMU speed (already read above).
-        # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_speed_rpm = self.tension_speed_controller.step(
-            speed_input=float(linvel[0]),
-            yaw=float(yaw_differ_value),
-            tension_ref=float(target_tension),
-            tension_meas=float(tension_value),
-        )
-        self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
-
         time.sleep(self.config.control_dt)
 
 
 if __name__ == "__main__":
+    # import argparse
+
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("net", type=str, help="network interface")
+    # args = parser.parse_args()
 
     config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod_tethered.yaml"
     config = Config(config_path)
