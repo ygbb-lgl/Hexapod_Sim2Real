@@ -32,3 +32,5 @@ class Config:
             self.num_leggeds_actions = config["num_leggeds_actions"]
             self.num_actions = config["num_actions"]
             self.num_obs = config["num_obs"] 
+
+            self.offset_deg = config["offset_deg"]

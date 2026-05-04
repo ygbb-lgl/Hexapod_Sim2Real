@@ -99,7 +99,19 @@ class CableArmYawSensor:
         """主控制循环调用接口，非阻塞返回最近一次的有效角度"""
         with self._lock:
             return self._last_angle
+        
+    # 计算 arm 的 yaw 角度
+    def get_yaw_angle(self, motor_angle_deg, yaw_value, offset_deg):
+        # 兼容 numpy 标量/长度为1的数组输入
+        motor_angle_deg = float(motor_angle_deg)
+        yaw_value = float(yaw_value)
+        offset_deg = float(offset_deg)
 
+        # 根据核心公式计算 arm 相对 body 的 yaw 角
+        theta_arm_body = motor_angle_deg - yaw_value + offset_deg
+
+        return theta_arm_body
+    
     def stop(self):
         self.is_running = False
         if self.read_thread and self.read_thread.is_alive():

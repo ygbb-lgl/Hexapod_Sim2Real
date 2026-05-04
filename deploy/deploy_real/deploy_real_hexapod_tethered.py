@@ -53,6 +53,7 @@ class Controller:
         # 初始化状态和命令
         self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.spool_q = np.zeros(1, dtype=np.float32)
         self.action = np.zeros(config.num_actions,dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
@@ -244,12 +245,20 @@ class Controller:
         else:
             print("No pitch angle data available.")
 
+    def print_yaw_differ_angle(self):
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
+        if yaw_differ_value is not None:
+            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
+        else:
+            print("No yaw differ angle data available.")
+
     def run(self):
         self.counter += 1
         for i in range(18):
             self.qj[i] = self.robot.motor_state_buffer.position[i]
             self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
 
+        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
@@ -265,6 +274,9 @@ class Controller:
         yaw_value = self.yaw_sensor.get_angle()
         if yaw_value is None:
             yaw_value = 0.0
+
+        # 计算yaw差值（arm相对body的yaw角度），作为观测输入提供给策略网络
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=yaw_value, offset_deg=self.config.offset_deg)
 
         if imu_data is None:
             # 如果没有 IMU 数据，使用全 0
@@ -307,7 +319,7 @@ class Controller:
         self.obs[64:67] = self.cmd * self.config.command_scale
         
         self.obs[67] = np.float32(tension_value)
-        self.obs[68] = np.float32(yaw_value)
+        self.obs[68] = np.float32(yaw_differ_value)
         self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
@@ -386,6 +398,7 @@ if __name__ == "__main__":
     controller.print_initial_joint_positions()
     controller.print_imu_data()
     controller.print_pitch_angle()
+    controller.print_yaw_differ_angle()
 
     controller.zero_torque_state()
     controller.move_to_default_pos()

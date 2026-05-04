@@ -74,3 +74,5 @@ tension_action_scale: 200
 num_leggeds_actions: 18
 num_actions: 19
 num_obs: 70
+
+offset_deg: 0.0
