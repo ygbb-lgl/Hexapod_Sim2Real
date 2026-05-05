@@ -1,42 +1,16 @@
+from re import S
+
 import serial
 import threading
 import time
 import struct
-import math
+import os
+import glob
 from typing import Optional
 
 
-"""Cable tension estimation from a 6-axis force/torque sensor with a guide pulley.
-
-This script parses M8218 frames and estimates cable tension.
-
-Default behavior preserves the previous implementation (use -Fz only).
-If the rope does not press along the sensor Z axis, enabling the force-norm
-based method is usually more robust, *provided the rope turn angle is known
-and approximately constant*.
-"""
-
-# Historical calibration constants (kept for reference; not used by default).
 PULL_FORCE_OFFSET = 2.1008
 PULL_FORCE_SCALE = 0.6057
-
-# --- Tension estimation configuration ---
-# method: "axis" -> use one force axis (legacy)
-#         "norm" -> use ||[Fx,Fy,Fz]|| and pulley turn-angle model
-TENSION_METHOD = "norm"  # "axis" or "norm"
-
-# For method == "axis"
-AXIS_NAME = "z"          # "x" | "y" | "z"
-AXIS_SIGN = -1.0         # multiply selected axis by this sign before model
-
-# For method == "norm"
-# Rope turn angle between the two segments at the pulley (degrees).
-# If your rope is deflected by 120 deg, set 120.0 (then 2*cos(60)=1).
-ROPE_TURN_ANGLE_DEG = 120.0
-
-# Optional constant force bias subtraction (in sensor frame), if needed.
-# Keep as zeros if you already handle zeroing elsewhere.
-FORCE_BIAS_XYZ = (0.0, 0.0, 0.0)
 
 
 CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB0"  # 按实际设备修改，例如 /dev/ttyACM0
@@ -50,46 +24,12 @@ class SensorDataParser:
         self.buffer = bytearray()
         self._lock = threading.Lock()
         self.last_cable_tension: Optional[float] = None
-        self.last_force_xyz: Optional[tuple[float, float, float]] = None
         self.last_update_time: Optional[float] = None
 
     def get_cable_tension(self) -> Optional[float]:
         """返回最近一次解析得到的张力（未解析到有效帧时为 None）。"""
         with self._lock:
             return self.last_cable_tension
-
-    def get_force_xyz(self) -> Optional[tuple[float, float, float]]:
-        """返回最近一次解析到的三轴力 (Fx,Fy,Fz)。"""
-        with self._lock:
-            return self.last_force_xyz
-
-    @staticmethod
-    def _estimate_tension_from_force(fx: float, fy: float, fz: float) -> float:
-        """Estimate tension from force components in sensor frame."""
-        bx, by, bz = FORCE_BIAS_XYZ
-        fx -= bx
-        fy -= by
-        fz -= bz
-
-        if TENSION_METHOD == "axis":
-            axis_value = {"x": fx, "y": fy, "z": fz}.get(AXIS_NAME)
-            if axis_value is None:
-                raise ValueError(f"Invalid AXIS_NAME: {AXIS_NAME}")
-            # Legacy assumption: tension equals projected force scaled by geometry.
-            # If your old formula was tension = -fz/(2*cos(60deg)), that is
-            # equivalent to ROPE_TURN_ANGLE_DEG=120 and using only Z projection.
-            effective_force = AXIS_SIGN * axis_value
-            denom = 2.0 * math.cos(math.radians(ROPE_TURN_ANGLE_DEG / 2.0))
-            return effective_force / denom
-
-        if TENSION_METHOD == "norm":
-            force_norm = math.sqrt(fx * fx + fy * fy + fz * fz)
-            denom = 2.0 * math.cos(math.radians(ROPE_TURN_ANGLE_DEG / 2.0))
-            if abs(denom) < 1e-6:
-                raise ZeroDivisionError("Invalid rope turn angle (denominator ~ 0)")
-            return force_norm / denom
-
-        raise ValueError(f"Invalid TENSION_METHOD: {TENSION_METHOD}")
 
     def parse(self, data):
         self.buffer.extend(data)
@@ -130,17 +70,14 @@ class SensorDataParser:
                 # 数据从第6个字节开始，每个浮点数4字节
                 try:
                     fx, fy, fz, mx, my, mz = struct.unpack('<ffffff', frame[6:30])
-                    cable_tension = self._estimate_tension_from_force(fx, fy, fz)
+                    cable_tension = (-fz - PULL_FORCE_OFFSET) / PULL_FORCE_SCALE
                     with self._lock:
                         self.last_cable_tension = float(cable_tension)
-                        self.last_force_xyz = (float(fx), float(fy), float(fz))
                         self.last_update_time = time.time()
                     # print(f"M8218 = {fx:10.6f}, {fy:10.6f}, {fz:10.6f},   {mx:10.6f}, {my:10.6f}, {mz:10.6f}")
                     # print(f'{fz:10.6f}')
                 except struct.error as e:
                     print(f"数据解析错误: {e}")
-                except Exception as e:
-                    print(f"张力估算错误: {e}")
 
                 # 处理完一帧，从缓冲区删除
                 self.buffer = self.buffer[head_index + 31:]
@@ -226,9 +163,6 @@ class CableTensionSensor:
     def get_cable_tension(self) -> Optional[float]:
         return self.parser.get_cable_tension()
 
-    def get_force_xyz(self) -> Optional[tuple[float, float, float]]:
-        return self.parser.get_force_xyz()
-
     def stop(self):
         self.is_running = False
         if self.read_thread:
@@ -247,12 +181,7 @@ if __name__ == "__main__":
             while True:
                 latest = sensor.get_cable_tension()
                 if latest is not None:
-                    fxyz = sensor.get_force_xyz()
-                    if fxyz is None:
-                        print(f"cable_tension = {latest:.6f}")
-                    else:
-                        fx, fy, fz = fxyz
-                        print(f"cable_tension = {latest:.6f} | Fx,Fy,Fz = {fx:.3f},{fy:.3f},{fz:.3f}")
+                    print(f"cable_tension = {latest:.6f}")
                 time.sleep(0.1)  # 模拟主控制循环提取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")
