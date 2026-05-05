@@ -23,7 +23,7 @@ PULL_FORCE_SCALE = 0.6057
 # --- Tension estimation configuration ---
 # method: "axis" -> use one force axis (legacy)
 #         "norm" -> use ||[Fx,Fy,Fz]|| and pulley turn-angle model
-TENSION_METHOD = "norm"  # "axis" or "norm"
+TENSION_METHOD = "norm"  # "axis" or "norm" norm更好
 
 # For method == "axis"
 AXIS_NAME = "z"          # "x" | "y" | "z"
