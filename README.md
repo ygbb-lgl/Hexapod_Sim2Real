@@ -10,3 +10,6 @@ sudo /home/lgl/anaconda3/envs/mujoco_rl/bin/python /home/lgl/Hexapod_Sim2Real/de
 ```bash
 sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_real_hexapod_tethered.py enp86s0
 ```
+
+现在还差一个yaw轴的标定（明天）
+拉力的比例系数不准确

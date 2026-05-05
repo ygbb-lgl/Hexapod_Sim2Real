@@ -13,7 +13,7 @@ PULL_FORCE_OFFSET = 2.1008
 PULL_FORCE_SCALE = 0.6057
 
 
-CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB0"  # 按实际设备修改，例如 /dev/ttyACM0
+CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB_cable_tension"  # 按实际设备修改，例如 /dev/ttyACM0
 
 
 class SensorDataParser:
@@ -137,7 +137,7 @@ class CableTensionSensor:
     def _configure_sensor(self):
         # 执行传感器清零
         self._send_command("ADJZF", "1;1;1;1;1;1;1;1")
-        time.sleep(10.0)  # 等待清零完成
+        time.sleep(5.0)  # 等待清零完成
         print("传感器清零完成")
         # 设置采样率
         self._send_command("SMPF", "100")

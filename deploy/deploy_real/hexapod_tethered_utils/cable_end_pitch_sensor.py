@@ -74,7 +74,7 @@ class AbsoluteAngleSensor:
             return None
 class CableEndPitchSensor:
     """后台线程持续读取角度，并缓存最新值。提供简单的 start/get_angle/stop 接口。"""
-    def __init__(self, port, baudrate=9600, slave_id=2, timeout=0.2, poll_hz=10.0):
+    def __init__(self, port, baudrate=115200, slave_id=2, timeout=0.2, poll_hz=10.0):
         self.port = port
         self.baudrate = baudrate
         self.slave_id = slave_id
@@ -124,7 +124,10 @@ class CableEndPitchSensor:
 
             if angle is not None:
                 with self._lock:
-                    self._last_angle = math.radians(float(angle))  # 转换为弧度
+                    deg_angle = float(angle)
+                    deg_angle = 124 - deg_angle
+                    #self._last_angle = deg_angle  # 直接使用角度值，单位为度
+                    self._last_angle = math.radians(deg_angle)  # 转换为弧度
                     self._last_ts = time.time()
 
             time.sleep(self.poll_period)
@@ -151,7 +154,7 @@ class CableEndPitchSensor:
 
 
 if __name__ == "__main__":
-    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB_pitch"
+    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
     
     sensor = CableEndPitchSensor(port=CABLE_PITCH_SERIAL_PORT, baudrate=115200)
     
@@ -161,7 +164,7 @@ if __name__ == "__main__":
             while True:
                 latest = sensor.get_angle()
                 if latest is not None:
-                    print(f"cable_end_pitch_angle = {latest:.6f} 度")
+                    print(f"cable_end_pitch_angle = {latest:.6f} rad")
                 time.sleep(0.1) # 模拟主控制循环抓取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")
