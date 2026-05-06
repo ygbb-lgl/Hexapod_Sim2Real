@@ -96,7 +96,7 @@ k_p_backward_rpm_per_unit: 0.2
 ff_enabled: false
 ff_max_rpm: 157.0
 ff_max_speed_mps: 0.8
-ff_radius_m: 0.15
+ff_radius_m: 0.07
 Kff: 1.0
 
 # 拉力死区

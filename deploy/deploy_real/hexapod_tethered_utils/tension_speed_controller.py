@@ -38,7 +38,7 @@ class TensionSpeedControllerConfig:
     ff_enabled: bool = False
     ff_max_rpm: float = 157.0
     ff_max_speed_mps: float = 0.8
-    ff_radius_m: float = 0.15
+    ff_radius_m: float = 0.07
 
     # Robustness / safety
     speed_limit_rpm: float = 600.0

@@ -32,7 +32,7 @@ AXIS_SIGN = -1.0         # multiply selected axis by this sign before model
 # For method == "norm"
 # Rope turn angle between the two segments at the pulley (degrees).
 # If your rope is deflected by 120 deg, set 120.0 (then 2*cos(60)=1).
-ROPE_TURN_ANGLE_DEG = 120.0
+ROPE_TURN_ANGLE_DEG = 111.0
 
 # Optional constant force bias subtraction (in sensor frame), if needed.
 # Keep as zeros if you already handle zeroing elsewhere.
