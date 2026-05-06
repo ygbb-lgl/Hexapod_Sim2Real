@@ -2,13 +2,14 @@ import sys
 import time
 
 try:
-    # Reuse the existing PD (18 joints) EtherCAT implementation
-    from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
+    # Script-style (recommended when running this file directly)
+    from deploy_real_el4090_pysoem import RL_Real_PySOEM
 except ImportError:
     from .deploy_real_el4090_pysoem import RL_Real_PySOEM
 
 try:
-    from motor_igh_sdk.el4090_motor_sdk import set_motor_speed
+    # Script-style (recommended when running this file directly)
+    from el4090_motor_sdk import set_motor_speed
 except ImportError:
     from .el4090_motor_sdk import set_motor_speed
 

@@ -36,7 +36,7 @@ class RL_Real_Speed_PySOEM:
         self.policy_to_motor_id_ = [self.single_motor_id]
         self.motor_direction_ = {self.single_motor_id: 1.0}
         self.motor_offset_ = {self.single_motor_id: 0.0}
-        self.motor_ethercat_addr_ = {self.single_motor_id: {"slave": 0, "passage": 1}}
+        self.motor_ethercat_addr_ = {self.single_motor_id: {"slave": 3, "passage": 1}}
 
         # Command/State buffers
         self.motor_command_buffer = type("CommandBuffer", (), {})()

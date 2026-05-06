@@ -12,7 +12,7 @@ except ImportError:
     from .el4090_motor_sdk import *
 
 # ==================== Configuration ====================
-IFNAME = 'wlo1'  # <--- 请修改为你实际的网卡名称，例如 'enp3s0'
+IFNAME = 'enp86s0'  # <--- 请修改为你实际的网卡名称，例如 'enp3s0'
 
 # ==================== RL_Real Class with Real EtherCAT ====================
 
@@ -23,7 +23,7 @@ class RL_Real_PySOEM:
 
         # --- Load Configuration from hexapod.yaml ---
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(script_dir, "../configs/hexapod.yaml")
+        config_path = os.path.join(script_dir, "../configs/hexapod_tethered.yaml")
         print(f"Loading configuration from {config_path}")
         
         with open(config_path, 'r') as f:
@@ -400,7 +400,7 @@ if __name__ == "__main__":
                 while True:
                     # 小 KD + 小 Position 用作测试
                     # 15 对应4号电机（根据 YAML 映射），你可以修改为其他 ID 来测试不同的电机
-                    robot.motor_command_buffer.kp[15] = 5.0 
+                    robot.motor_command_buffer.kp[15] = 0.0 
                     robot.motor_command_buffer.kd[15] = 0.5
                     robot.motor_command_buffer.target_position[15] = 0
 
