@@ -103,14 +103,29 @@ class CableArmYawSensor:
         
     # 计算 arm 的 yaw 角度
     def get_yaw_angle(self, motor_angle_deg, yaw_value, offset_deg):
+        """计算 arm 相对 body 的 yaw 角（单位：度）。
+
+        返回值：
+        - float：有效角度
+        - None：输入 yaw_value 为空/无效时
+
+        说明：
+        - yaw_value 期望为“传感器读到的角度（度）”
+        - motor_angle_deg / offset_deg 期望为“度”
+        """
+
+        # 读取线程启动后，前几次可能还没拿到有效值，此时 get_angle() 会返回 None
+        if yaw_value is None:
+            return None
+
         # 兼容 numpy 标量/长度为1的数组输入
         motor_angle_deg = float(motor_angle_deg)
         yaw_value = math.radians(float(yaw_value))
-        offset_deg = math.radians(float(offset_deg))
+        offset_deg = float(offset_deg)
 
         # 根据核心公式计算 arm 相对 body 的 yaw 角
         theta_arm_body = motor_angle_deg - yaw_value + offset_deg
-
+        theta_arm_body = -theta_arm_body
         return theta_arm_body
     
     def stop(self):
@@ -134,8 +149,11 @@ if __name__ == "__main__":
         try:
             while True:
                 ang = sensor.get_angle()
-                if ang is not None:
-                    print(f"Arm Yaw Angle = {ang:.4f} 度")
+                differ_angle = sensor.get_yaw_angle(-2.790 ,ang, 5.8459)
+                # if ang is not None:
+                #     print(f"Arm Yaw Angle = {ang:.4f} 度")          
+                if differ_angle is not None:
+                    print(f"Arm differ Yaw Angle = {differ_angle:.4f} 度")
                 time.sleep(0.1)
         except KeyboardInterrupt:
             print("\n正在停止程序...")

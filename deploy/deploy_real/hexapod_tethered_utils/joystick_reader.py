@@ -12,10 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Xbox 360 Gamepad class that uses Pygame under the hood."""
+"""Xbox gamepad reader implemented with Pygame.
+
+Note: Button indices vary across controllers/drivers (SDL, xpad, bluetooth, etc).
+This module provides a sane default mapping for common SDL Xbox layouts and a
+legacy fallback mapping for older setups.
+"""
 
 import threading
 import time
+import os
 import numpy as np
 import pygame
 from typing import List
@@ -57,7 +63,11 @@ class Gamepad:
         self._vel_scale_rot = vel_scale_rot
 
         # Pygame button index mapping (varies by controller/driver).
-        self._button_map = button_map or {"A": 0, "B": 1, "X": 3, "Y": 4, "LB": 6}
+        # Common SDL (Linux) Xbox layout (note: some controllers swap X/Y indices):
+        #   A=0, B=1, X=2, Y=3, LB=4, RB=5, BACK=6, START=7, XBOX=8, LS=9, RS=10
+        # Legacy layout (previous project default):
+        #   A=0, B=1, X=3, Y=4, LB=6
+        self._button_map = button_map  # may be None; resolved after joystick connects
 
         self.vx = 0.0
         self.vy = 0.0
@@ -87,8 +97,58 @@ class Gamepad:
         self._joystick = None
         self._connect_device()
 
+        if self._button_map is None:
+            self._button_map = self._choose_default_button_map()
+
         self.read_thread = threading.Thread(target=self.read_loop, daemon=True)
         self.read_thread.start()
+
+    def _choose_default_button_map(self):
+        preset = (os.environ.get("HEXAPOD_GAMEPAD_PRESET") or "").strip().lower()
+        legacy = {"A": 0, "B": 1, "X": 3, "Y": 4, "LB": 6}
+        # Default for this repo: X/Y swapped controller (observed on some pads).
+        sdl_xbox = {"A": 0, "B": 1, "X": 3, "Y": 2, "LB": 4}
+
+        if preset in {"legacy", "old"}:
+            return legacy
+        if preset in {"sdl", "standard", "xbox"}:
+            return sdl_xbox
+
+        # Heuristic default: SDL/Xbox mapping is most common on modern Linux.
+        default_map = dict(sdl_xbox)
+
+        # Optional per-button overrides, e.g.:
+        #   export HEXAPOD_GAMEPAD_BTN_Y=4
+        #   export HEXAPOD_GAMEPAD_BTN_LB=6
+        for key in ("A", "B", "X", "Y", "LB"):
+            env_key = f"HEXAPOD_GAMEPAD_BTN_{key}"
+            if env_key not in os.environ:
+                continue
+            try:
+                default_map[key] = int(os.environ[env_key])
+            except Exception:
+                pass
+
+        return default_map
+
+    def _read_button(self, name: str) -> int:
+        if self._joystick is None:
+            return 0
+        idx = self._button_map.get(name, None) if isinstance(self._button_map, dict) else None
+        if idx is None:
+            return 0
+        try:
+            idx = int(idx)
+        except Exception:
+            return 0
+        if idx < 0:
+            return 0
+        try:
+            if idx >= int(self._joystick.get_numbuttons()):
+                return 0
+            return int(self._joystick.get_button(idx))
+        except Exception:
+            return 0
 
     def _connect_device(self):
         try:
@@ -117,11 +177,11 @@ class Gamepad:
                 wz = -self._joystick.get_axis(3) 
 
                 # Buttons
-                a = int(self._joystick.get_button(self._button_map["A"]))
-                b = int(self._joystick.get_button(self._button_map["B"]))
-                x = int(self._joystick.get_button(self._button_map["X"]))
-                y = int(self._joystick.get_button(self._button_map["Y"]))
-                lb = int(self._joystick.get_button(self._button_map["LB"]))
+                a = self._read_button("A")
+                b = self._read_button("B")
+                x = self._read_button("X")
+                y = self._read_button("Y")
+                lb = self._read_button("LB")
 
                 self.a = a
                 self.b = b

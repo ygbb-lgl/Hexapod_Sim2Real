@@ -268,7 +268,7 @@ if __name__ == "__main__":
     motor_id = int(sys.argv[2]) if len(sys.argv) > 2 else 19
 
     # 可选: 第三个参数 指定恒速转动指令（rpm）
-    const_rpm = float(sys.argv[3]) if len(sys.argv) > 3 else 10.0
+    const_rpm = float(sys.argv[3]) if len(sys.argv) > 3 else 1.0
 
     print(f"Launching Speed Mode on interface {IFNAME}, motor_id={motor_id}")
 

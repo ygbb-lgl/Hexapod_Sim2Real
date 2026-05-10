@@ -7,7 +7,7 @@ import math
 import serial
 
 
-CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
+CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB_pitch"
 
 class AbsoluteAngleSensor:
     def __init__(self, port, baudrate=115200, slave_id=2, timeout=1):
@@ -125,6 +125,7 @@ class CableEndPitchSensor:
             if angle is not None:
                 with self._lock:
                     deg_angle = float(angle)
+                    # 标定角
                     deg_angle = 124 - deg_angle
                     #self._last_angle = deg_angle  # 直接使用角度值，单位为度
                     self._last_angle = math.radians(deg_angle)  # 转换为弧度
@@ -154,7 +155,7 @@ class CableEndPitchSensor:
 
 
 if __name__ == "__main__":
-    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB0"
+    CABLE_PITCH_SERIAL_PORT = "/dev/ttyUSB_pitch"
     
     sensor = CableEndPitchSensor(port=CABLE_PITCH_SERIAL_PORT, baudrate=115200)
     

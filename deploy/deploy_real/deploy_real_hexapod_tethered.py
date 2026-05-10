@@ -108,7 +108,7 @@ class Controller:
         )
 
         # imu init
-        self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
+        self.imu = IMUSDK(port='/dev/ttyUSB2', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
@@ -159,14 +159,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 55.0
-                kd[policy_idx] = 0.45
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             elif motor_id in group2:
-                kp[policy_idx] = 75.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             elif motor_id in group3:
-                kp[policy_idx] = 70.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -427,6 +427,7 @@ if __name__ == "__main__":
     controller.print_initial_joint_positions()
     controller.print_imu_data()
     controller.print_pitch_angle()
+
     controller.print_yaw_differ_angle()
 
     controller.zero_torque_state()
