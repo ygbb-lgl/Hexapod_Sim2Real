@@ -5,7 +5,7 @@ import csv
 import os
 from datetime import datetime
 
-from imu_sdk.imu_sdk import IMUSDK
+from imu_sdk_deta40.imu_sdk import IMUSDK
 
 from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_velocity_cmd
 
@@ -108,7 +108,7 @@ class Controller:
         )
 
         # imu init
-        self.imu = IMUSDK(port='/dev/ttyUSB2', baudrate=921600)
+        self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")

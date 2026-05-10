@@ -5,17 +5,25 @@ import csv
 import os
 from datetime import datetime
 
-from imu_sdk_deta40.imu_sdk import IMUSDK
+from imu_sdk.imu_sdk import IMUSDK
 
-from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd
+from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_velocity_cmd
 
-from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
+from hexapod_tethered_utils.tension_speed_controller import TensionSpeedController,TensionSpeedControllerConfig
+
+from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
+
 
 from hexapod_tethered_utils.joystick_reader import Gamepad
 
-import config_hexapod
+from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
+from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
+from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
-from config_hexapod import Config
+
+import config_hexapod_tethered
+
+from config_hexapod_tethered import Config
 
 
 class Controller:
@@ -32,12 +40,6 @@ class Controller:
                 self.gamepad = None
                 print(f"[gamepad] disabled due to error: {e}")
 
-        self._tension_failed = False
-        self._tension_value = 0.0
-
-        self._pitch_failed = False
-        self._pitch_value = 0.0
-
         self.ang_vel_scale = config.ang_vel
         self.dof_pos_scale = config.dof_pos
         self.dof_vel_scale = config.dof_vel
@@ -51,8 +53,9 @@ class Controller:
         self._warm_up()
         
         # 初始化状态和命令
-        self.qj = np.zeros(config.num_actions,dtype=np.float32)
-        self.dqj = np.zeros(config.num_actions,dtype=np.float32)
+        self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.spool_q = np.zeros(1, dtype=np.float32)
         self.action = np.zeros(config.num_actions,dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
@@ -77,17 +80,57 @@ class Controller:
             self.log_writers.append(writer)
             print(f'[Logging] Created {filepath}')
 
-        self.robot = RL_Real_PySOEM('enp86s0')
+        # 电机初始化 EtherCAT（单 Master）：18 关节 PD + 额外 spool 速度电机 motor_id=19 (slave_idx=3, passage=1)
+        # 这里的 'enp86s0' 就是网口名；如果你要换网口，改成你的实际 NIC。
+        # Spool (cable) motor is fixed in this project:
+        # motor_id=19 on slave_idx=3 passage=1, direction=+1.
+        self.robot = RL_Real_PySOEM_WithSpoolSpeed('enp86s0')
         self.robot_start = self.robot.start()
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
 
-        self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
+        # Tension -> spool speed controller (pure numeric inputs, no sensor IO inside)
+        self.tension_speed_controller = TensionSpeedController(
+            TensionSpeedControllerConfig(
+                speed_sign=float(self.config.tsc_speed_sign),
+                k_p_forward_rpm_per_unit=float(self.config.tsc_k_p_forward_rpm_per_unit),
+                k_p_backward_rpm_per_unit=float(self.config.tsc_k_p_backward_rpm_per_unit),
+                ff_enabled=bool(self.config.tsc_ff_enabled),
+                ff_max_rpm=float(self.config.tsc_ff_max_rpm),
+                ff_max_speed_mps=float(self.config.tsc_ff_max_speed_mps),
+                ff_radius_m=float(self.config.tsc_ff_radius_m),
+                speed_limit_rpm=float(self.config.tsc_speed_limit_rpm),
+                speed_deadband_rpm=float(self.config.tsc_speed_deadband_rpm),
+                tension_deadband=float(self.config.tsc_tension_deadband),
+                tension_lpf_alpha=float(self.config.tsc_tension_lpf_alpha),
+                Kff=float(self.config.tsc_Kff),
+            )
+        )
+
+        # imu init
+        self.imu = IMUSDK(port='/dev/ttyUSB2', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
 
+        # 六位力传感器初始化 RS232
+        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB_cable_tension', baudrate=115200)
+        self.tension_started = self.tension_sensor.start()
+        if not self.tension_started:
+            print("[WARNING] Tension sensor start failed. Will use zero data.")
         
+        # 末端绝对角度传感器初始化 RS485
+        self.pitch_sensor = CableEndPitchSensor(port='/dev/ttyUSB_pitch', baudrate=115200)
+        self.pitch_started = self.pitch_sensor.start()
+        if not self.pitch_started:
+            print("[WARNING] Pitch sensor start failed. Will use zero data.")
+
+        # 磁栅编码器初始化 RS485
+        self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB_yaw', baudrate=115200)
+        self.yaw_started = self.yaw_sensor.start()
+        if not self.yaw_started:
+            print("[WARNING] Yaw sensor start failed. Will use zero data.")
+
     def __del__(self):
         # Close all log files
         for i in range(18):
@@ -116,14 +159,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 55.0
-                kd[policy_idx] = 0.45
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             elif motor_id in group2:
-                kp[policy_idx] = 75.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             elif motor_id in group3:
-                kp[policy_idx] = 70.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -147,6 +190,8 @@ class Controller:
         print("Waiting for the Y signal to default pos...")
         while self.gamepad.get_button_y() != 1:
             create_zero_cmd(self.robot)
+            # 零速度
+            create_zero_velocity_cmd(self.robot)
             time.sleep(self.config.control_dt)
 
     # 移动到默认位置
@@ -215,6 +260,19 @@ class Controller:
         else:
             print("No IMU data available.")
 
+    def print_pitch_angle(self):
+        pitch_value = self.pitch_sensor.get_angle()
+        if pitch_value is not None:
+            print(f"Pitch Angle: {pitch_value:.3f} degrees")
+        else:
+            print("No pitch angle data available.")
+
+    def print_yaw_differ_angle(self):
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
+        if yaw_differ_value is not None:
+            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
+        else:
+            print("No yaw differ angle data available.")
 
     def run(self):
         self.counter += 1
@@ -222,9 +280,25 @@ class Controller:
             self.qj[i] = self.robot.motor_state_buffer.position[i]
             self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
 
+        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
+
+        tension_value = self.tension_sensor.get_cable_tension()
+        if tension_value is None:
+            tension_value = 0.0
+            
+        pitch_value = self.pitch_sensor.get_angle()
+        if pitch_value is None:
+            pitch_value = 0.0
+            
+        yaw_value = self.yaw_sensor.get_angle()
+        if yaw_value is None:
+            yaw_value = 0.0
+
+        # 计算yaw差值（arm相对body的yaw角度），作为观测输入提供给策略网络
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=yaw_value, offset_deg=self.config.offset_deg)
 
         if imu_data is None:
             # 如果没有 IMU 数据，使用全 0
@@ -260,25 +334,31 @@ class Controller:
         self.obs[6:9] = gravity_orientation
         self.obs[9:27] = qj_obs * self.dof_pos_scale
         self.obs[27:45] = dqj_obs * self.dof_vel_scale
-        self.obs[45:63] = self.action
+        self.obs[45:64] = self.action
 
         # Command is stored in obs with scaling (match sim2sim layout).
         # Avoid printing at control rate (50Hz) since it can disturb timing.
-        self.obs[63:66] = self.cmd * self.config.command_scale
-
+        self.obs[64:67] = self.cmd * self.config.command_scale
+        
+        self.obs[67] = np.float32(tension_value)
+        self.obs[68] = np.float32(yaw_differ_value)
+        self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
         self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
-        # action clip -1 1
-        self.action = np.clip(self.action, -1.0, 1.0)
+        # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
+        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[18] = np.clip(self.action[18], 0.0, 2.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
+        
+        target_tension = self.action[18] * self.config.tension_action_scale
 
         for i in range(18):
             q = target_dof_pos[i]
-            motor_id = int(self.config.joint2motor_idx[i])
+            #motor_id = int(self.config.joint2motor_idx[i])
             
             # Read actual motor position
             actual_pos = self.robot.motor_state_buffer.position[i]
@@ -286,15 +366,15 @@ class Controller:
 
             # Add feedforward torque for Group2 joints with correct sign
             # Sign depends on motor_direction to ensure torque assists motion
-            group2_motor_ids = {18, 9, 3, 15, 11, 6}
-            if motor_id in group2_motor_ids:
-                # Get motor direction (+1 or -1)
-                motor_dir = self.config.motor_directions[i]
-                # Apply feedforward in the direction that assists gravity compensation
-                # If motor_dir is -1, we need to flip the sign
-                feedforward_torque = 1.5 * motor_dir
-            else:
-                feedforward_torque = 0.0
+            # group2_motor_ids = {18, 9, 3, 15, 11, 6}
+            # if motor_id in group2_motor_ids:
+            #     # Get motor direction (+1 or -1)
+            #     motor_dir = self.config.motor_directions[i]
+            #     # Apply feedforward in the direction that assists gravity compensation
+            #     # If motor_dir is -1, we need to flip the sign
+            #     feedforward_torque = 0.0 * motor_dir
+            # else:
+            #     feedforward_torque = 0.0
 
             # Log to CSV
             self.log_writers[i].writerow([
@@ -310,7 +390,7 @@ class Controller:
             self.robot.motor_command_buffer.kd[i] = float(self._kd_policy[i])
             self.robot.motor_command_buffer.target_position[i] = q
             self.robot.motor_command_buffer.target_velocity[i] = 0.0
-            self.robot.motor_command_buffer.feedforward_torque[i] = feedforward_torque
+            self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
 
 
             # motor_id 仅用于对照打印
@@ -319,17 +399,24 @@ class Controller:
             #print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
             
 
+        # Spool speed command from reference/actual tension alignment.
+        # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
+        # Paper-style: feedforward uses IMU speed (already read above).
+        # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
+        spool_speed_rpm = self.tension_speed_controller.step(
+            speed_input=float(linvel[0]),
+            yaw=float(yaw_differ_value),
+            tension_ref=float(target_tension),
+            tension_meas=float(tension_value),
+        )
+        self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
+
         time.sleep(self.config.control_dt)
 
 
 if __name__ == "__main__":
-    # import argparse
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("net", type=str, help="network interface")
-    # args = parser.parse_args()
-
-    config_path = f"{config_hexapod.ROOT_DIR}/deploy/deploy_real/configs/hexapod.yaml"
+    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod_tethered.yaml"
     config = Config(config_path)
 
     # ChannelFactoryInitialize(0, args.net)
@@ -339,6 +426,9 @@ if __name__ == "__main__":
     time.sleep(1) # 等待系统稳定
     controller.print_initial_joint_positions()
     controller.print_imu_data()
+    controller.print_pitch_angle()
+
+    controller.print_yaw_differ_angle()
 
     controller.zero_torque_state()
     controller.move_to_default_pos()
