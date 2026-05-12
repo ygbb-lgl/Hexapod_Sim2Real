@@ -26,7 +26,7 @@ try:
     from .can_rv import *
 except ImportError:  # pragma: no cover
     # Fallback for running this file directly.
-    from can_rv import *
+    from deploy.deploy_real.hexapod_tethered_utils_gkq.leg_joints_motions.can_rv import *
 
 
 

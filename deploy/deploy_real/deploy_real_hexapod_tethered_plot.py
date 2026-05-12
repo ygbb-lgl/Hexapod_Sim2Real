@@ -558,7 +558,7 @@ class Controller:
         )
         self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
         self.robot.spool_state_buffer.velocity[0] = float(self.robot.spool_state_buffer.velocity[0])  # Ensure velocity is updated for next control step
-
+        spool_rpm = self.robot.spool_state_buffer.velocity[0] * 60.0 / (2.0 * np.pi)  # Convert rad/s to RPM for logging/plotting
         # Update real-time plots (best-effort; does nothing if disabled)
         if getattr(self, "plotter", None) is not None:
             self.plotter.update(
@@ -568,7 +568,7 @@ class Controller:
                 yaw_differ_value=float(yaw_differ_value),
                 imu_vx=float(linvel[0]),
                 spool_speed_rpm=float(spool_speed_rpm),
-                spool_velocity_buffer=float(self.robot.spool_state_buffer.velocity[0]),
+                spool_velocity_buffer=float(spool_rpm),
             )
         time.sleep(self.config.control_dt)
 

@@ -144,7 +144,7 @@ if __name__ == "__main__":
 
         # Spool speed command
         robot.spool_command_buffer.target_speed_rpm[0] = rpm
-        robot.spool_command_buffer.current_limit_01a[0] = 500
+        robot.spool_command_buffer.current_limit_01a[0] = 550
         robot.spool_command_buffer.ack_status[0] = 1
 
         if not robot.start():

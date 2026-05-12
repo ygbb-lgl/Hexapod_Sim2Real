@@ -24,7 +24,7 @@ try:
     from .math_ops import float_to_uint, uint_to_float
 except ImportError:  # pragma: no cover
     # Fallback when running from this directory directly.
-    from math_ops import float_to_uint, uint_to_float  # type: ignore
+    from deploy.deploy_real.hexapod_tethered_utils_gkq.leg_joints_motions.math_ops import float_to_uint, uint_to_float  # type: ignore
 
 # -----------------------------
 # 常量（来自 can_rv.c）

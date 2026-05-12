@@ -95,12 +95,12 @@ k_p_backward_rpm_per_unit: 0.2
 # ff_rpm = (ff_max_rpm/ff_max_speed_mps*60/2pi) * (v_mps*cos(yaw)) / ff_radius_m
 ff_enabled: True
 ff_max_rpm: 157.0
-ff_max_speed_mps: 0.8
+ff_max_speed_mps: 1.0
 ff_radius_m: 0.07
 Kff: 1.0
 
 # 拉力死区
-tension_deadband: 7.0
+tension_deadband: 3.0
 
 speed_deadband_rpm: 0.05
 tension_lpf_alpha: 1.0
