@@ -4,6 +4,7 @@ import torch
 import csv
 import os
 from datetime import datetime
+from collections import deque
 
 from imu_sdk_deta40.imu_sdk import IMUSDK
 
@@ -24,6 +25,131 @@ from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 import config_hexapod_tethered
 
 from config_hexapod_tethered import Config
+
+
+class RealTimePlotter:
+    def __init__(
+        self,
+        history_seconds: float = 20.0,
+        control_dt: float = 0.02,
+        plot_every_n: int = 5,
+        enabled: bool = True,
+    ) -> None:
+        self.enabled = bool(enabled)
+        self.control_dt = float(control_dt)
+        self.plot_every_n = max(int(plot_every_n), 1)
+
+        self._step = 0
+        self._ok = False
+
+        self._maxlen = max(int(history_seconds / max(self.control_dt, 1e-6)), 10)
+        self._t = deque(maxlen=self._maxlen)
+        self._tension_meas = deque(maxlen=self._maxlen)
+        self._tension_ref = deque(maxlen=self._maxlen)
+        self._yaw = deque(maxlen=self._maxlen)
+        self._imu_vx = deque(maxlen=self._maxlen)
+        self._spool_cmd_rpm = deque(maxlen=self._maxlen)
+        self._spool_vel_buf = deque(maxlen=self._maxlen)
+
+        if not self.enabled:
+            return
+
+        try:
+            import matplotlib.pyplot as plt  # type: ignore
+
+            self._plt = plt
+            self._plt.ion()
+
+            self._fig, self._axs = self._plt.subplots(
+                4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
+            )
+            self._fig.canvas.manager.set_window_title("Hexapod Real-time Debug")
+
+            # 1) tension
+            ax = self._axs[0]
+            (self._ln_tension_meas,) = ax.plot([], [], label="tension_value")
+            (self._ln_tension_ref,) = ax.plot([], [], label="target_tension")
+            ax.set_ylabel("Tension")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 2) yaw_differ
+            ax = self._axs[1]
+            (self._ln_yaw,) = ax.plot([], [], label="yaw_differ_value")
+            ax.set_ylabel("Yaw (deg)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 3) imu vx
+            ax = self._axs[2]
+            (self._ln_imu_vx,) = ax.plot([], [], label="imu_vx")
+            ax.set_ylabel("IMU vx (m/s)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 4) spool cmd rpm + buffer velocity
+            ax = self._axs[3]
+            (self._ln_spool_cmd,) = ax.plot([], [], label="spool_speed_rpm")
+            (self._ln_spool_vel,) = ax.plot([], [], label="spool_state_buffer.vel")
+            ax.set_ylabel("Spool")
+            ax.set_xlabel("Time (s)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            self._ok = True
+        except Exception as e:
+            self._ok = False
+            self.enabled = False
+            print(f"[Plot] disabled due to error: {e}")
+
+    def update(
+        self,
+        t_s: float,
+        tension_value: float,
+        target_tension: float,
+        yaw_differ_value: float,
+        imu_vx: float,
+        spool_speed_rpm: float,
+        spool_velocity_buffer: float,
+    ) -> None:
+        if not self.enabled or not self._ok:
+            return
+
+        self._step += 1
+        self._t.append(float(t_s))
+        self._tension_meas.append(float(tension_value))
+        self._tension_ref.append(float(target_tension))
+        self._yaw.append(float(yaw_differ_value))
+        self._imu_vx.append(float(imu_vx))
+        self._spool_cmd_rpm.append(float(spool_speed_rpm))
+        self._spool_vel_buf.append(float(spool_velocity_buffer))
+
+        if (self._step % self.plot_every_n) != 0:
+            return
+
+        t = np.asarray(self._t, dtype=np.float32)
+        if t.size < 2:
+            return
+
+        self._ln_tension_meas.set_data(t, np.asarray(self._tension_meas, dtype=np.float32))
+        self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
+        self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
+        self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
+        self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_rpm, dtype=np.float32))
+        self._ln_spool_vel.set_data(t, np.asarray(self._spool_vel_buf, dtype=np.float32))
+
+        for ax in self._axs:
+            ax.relim()
+            ax.autoscale_view(scalex=True, scaley=True)
+
+        try:
+            self._fig.canvas.draw_idle()
+            self._fig.canvas.flush_events()
+            self._plt.pause(0.001)
+        except Exception:
+            # If GUI backend gets into a bad state, avoid blocking control loop.
+            self.enabled = False
+            print("[Plot] disabled (runtime GUI error)")
 
 
 class Controller:
@@ -66,6 +192,15 @@ class Controller:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.log_dir = os.path.join(os.getcwd(), f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
+
+        # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
+        # Plot refresh is decimated to reduce impact on control timing.
+        self.plotter = RealTimePlotter(
+            history_seconds=20.0,
+            control_dt=float(self.config.control_dt),
+            plot_every_n=5,
+            enabled=True,
+        )
         
         # Open 18 CSV files for logging motor data
         self.log_files = []
@@ -188,6 +323,9 @@ class Controller:
     def zero_torque_state(self):
         print("Enter zero torque state.")
         print("Waiting for the Y signal to default pos...")
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot enter zero_torque_state")
+
         while self.gamepad.get_button_y() != 1:
             create_zero_cmd(self.robot)
             # 零速度
@@ -227,6 +365,9 @@ class Controller:
     def default_pos_state(self):
         print("Enter default pos state.")
         print("Waiting for the Button A signal...")
+
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot enter default_pos_state")
 
         #init_dof_pos = np.zeros(18, dtype=np.float32)
         while self.gamepad.get_button_a() != 1:
@@ -268,13 +409,19 @@ class Controller:
             print("No pitch angle data available.")
 
     def print_yaw_differ_angle(self):
+        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
         yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
         if yaw_differ_value is not None:
+            print(self.spool_q[0])
+            print(self.yaw_sensor.get_angle())
             print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
         else:
             print("No yaw differ angle data available.")
 
     def run(self):
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot run control loop")
+
         self.counter += 1
         for i in range(18):
             self.qj[i] = self.robot.motor_state_buffer.position[i]
@@ -410,7 +557,19 @@ class Controller:
             tension_meas=float(tension_value),
         )
         self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
+        self.robot.spool_state_buffer.velocity[0] = float(self.robot.spool_state_buffer.velocity[0])  # Ensure velocity is updated for next control step
 
+        # Update real-time plots (best-effort; does nothing if disabled)
+        if getattr(self, "plotter", None) is not None:
+            self.plotter.update(
+                t_s=float(self.counter * self.config.control_dt),
+                tension_value=float(tension_value),
+                target_tension=float(target_tension),
+                yaw_differ_value=float(yaw_differ_value),
+                imu_vx=float(linvel[0]),
+                spool_speed_rpm=float(spool_speed_rpm),
+                spool_velocity_buffer=float(self.robot.spool_state_buffer.velocity[0]),
+            )
         time.sleep(self.config.control_dt)
 
 

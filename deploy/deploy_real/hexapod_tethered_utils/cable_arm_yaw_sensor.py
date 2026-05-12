@@ -125,7 +125,7 @@ class CableArmYawSensor:
 
         # 根据核心公式计算 arm 相对 body 的 yaw 角
         theta_arm_body = motor_angle_deg - yaw_value + offset_deg
-        theta_arm_body = -theta_arm_body
+        #theta_arm_body = -theta_arm_body
         return theta_arm_body
     
     def stop(self):
@@ -149,7 +149,7 @@ if __name__ == "__main__":
         try:
             while True:
                 ang = sensor.get_angle()
-                differ_angle = sensor.get_yaw_angle(-0.091 ,ang, 3.5913)
+                differ_angle = sensor.get_yaw_angle(-1.254 ,ang, 6.0289)
                 if ang is not None:
                     print(f"Arm Yaw Angle = {ang:.4f} 度")          
                 if differ_angle is not None:

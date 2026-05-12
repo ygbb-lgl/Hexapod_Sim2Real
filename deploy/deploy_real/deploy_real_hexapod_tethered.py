@@ -270,6 +270,8 @@ class Controller:
     def print_yaw_differ_angle(self):
         yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
         if yaw_differ_value is not None:
+            print(self.spool_q[0])
+            print(self.yaw_sensor.get_angle())
             print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
         else:
             print("No yaw differ angle data available.")

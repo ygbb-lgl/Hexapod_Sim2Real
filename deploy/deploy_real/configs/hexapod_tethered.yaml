@@ -75,13 +75,13 @@ num_leggeds_actions: 18
 num_actions: 19
 num_obs: 70
 
-offset_deg: 3.5913
+offset_deg: 6.0289
 
 # Optional: reference tension -> spool speed controller
 # Output unit is RPM and will be written into `robot.spool_command_buffer.target_speed_rpm[0]`.
 # Control law (conceptually):
 #   speed_rpm = sign * (k_ff_vel*v + k_ff_tension*T_ref + k_p*(T_ref-T_meas))
-speed_sign: -1.0
+speed_sign: 1.0
 speed_limit_rpm: 157.0
 
 # Feedback: paper-style asymmetric Kp (forward/backward)
@@ -93,7 +93,7 @@ k_p_backward_rpm_per_unit: 0.2
 
 # Feedforward from IMU speed (disabled by default for safety)
 # ff_rpm = (ff_max_rpm/ff_max_speed_mps*60/2pi) * (v_mps*cos(yaw)) / ff_radius_m
-ff_enabled: false
+ff_enabled: True
 ff_max_rpm: 157.0
 ff_max_speed_mps: 0.8
 ff_radius_m: 0.07
