@@ -75,7 +75,7 @@ num_leggeds_actions: 18
 num_actions: 19
 num_obs: 70
 
-offset_deg: 5.8459
+offset_deg: 3.5913
 
 # Optional: reference tension -> spool speed controller
 # Output unit is RPM and will be written into `robot.spool_command_buffer.target_speed_rpm[0]`.

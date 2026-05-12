@@ -149,9 +149,9 @@ if __name__ == "__main__":
         try:
             while True:
                 ang = sensor.get_angle()
-                differ_angle = sensor.get_yaw_angle(-2.790 ,ang, 5.8459)
-                # if ang is not None:
-                #     print(f"Arm Yaw Angle = {ang:.4f} 度")          
+                differ_angle = sensor.get_yaw_angle(-0.091 ,ang, 3.5913)
+                if ang is not None:
+                    print(f"Arm Yaw Angle = {ang:.4f} 度")          
                 if differ_angle is not None:
                     print(f"Arm differ Yaw Angle = {differ_angle:.4f} 度")
                 time.sleep(0.1)
