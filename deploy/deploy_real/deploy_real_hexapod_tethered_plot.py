@@ -76,7 +76,7 @@ class RealTimePlotter:
             # 2) yaw_differ
             ax = self._axs[1]
             (self._ln_yaw,) = ax.plot([], [], label="yaw_differ_value")
-            ax.set_ylabel("Yaw (deg)")
+            ax.set_ylabel("Yaw (rad)")
             ax.grid(True)
             ax.legend(loc="upper right")
 
@@ -297,7 +297,7 @@ class Controller:
                 kp[policy_idx] = 80.0
                 kd[policy_idx] = 1.3
             elif motor_id in group2:
-                kp[policy_idx] = 80.0
+                kp[policy_idx] = 90.0
                 kd[policy_idx] = 1.3
             elif motor_id in group3:
                 kp[policy_idx] = 80.0
@@ -335,6 +335,8 @@ class Controller:
     # 移动到默认位置
     def move_to_default_pos(self):
         print('Moving to default pos.')
+        # Safety: ensure spool speed motor (id19) is stopped while repositioning joints.
+        create_zero_velocity_cmd(self.robot)
         total_time = 2
         num_step = int(total_time / self.config.control_dt)
         default_pos = self.config.default_angles
@@ -359,6 +361,9 @@ class Controller:
                 self.robot.motor_command_buffer.target_velocity[j] = 0.0
                 self.robot.motor_command_buffer.feedforward_torque[j] = 0.0
 
+            # Keep stopping spool continuously (avoid stale speed cmd).
+            create_zero_velocity_cmd(self.robot)
+
             time.sleep(self.config.control_dt)
 
     # 在默认位置等待，直到按下按钮A
@@ -380,6 +385,9 @@ class Controller:
                 self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
                 # init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
                 # print(init_dof_pos[i])
+
+            # Safety: keep spool speed at 0 while holding default pose.
+            create_zero_velocity_cmd(self.robot)
             time.sleep(self.config.control_dt)
 
     # 打印关节初始位置
@@ -414,7 +422,7 @@ class Controller:
         if yaw_differ_value is not None:
             print(self.spool_q[0])
             print(self.yaw_sensor.get_angle())
-            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
+            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} rad")
         else:
             print("No yaw differ angle data available.")
 
@@ -487,7 +495,9 @@ class Controller:
         # Avoid printing at control rate (50Hz) since it can disturb timing.
         self.obs[64:67] = self.cmd * self.config.command_scale
         
+        #self.obs[67] = np.float32(0)
         self.obs[67] = np.float32(tension_value)
+        #self.obs[68] = np.float32(0)
         self.obs[68] = np.float32(yaw_differ_value)
         self.obs[69] = np.float32(pitch_value)
 
@@ -602,9 +612,12 @@ if __name__ == "__main__":
                 break
 
             if controller.gamepad.get_button_y() == 1:
+                # Safety: stop spool speed motor immediately on Y.
+                create_zero_velocity_cmd(controller.robot)
                 controller.move_to_default_pos()
                 # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
                 controller.default_pos_state()
+                create_zero_velocity_cmd(controller.robot)
             
         except KeyboardInterrupt:
             break
@@ -621,6 +634,7 @@ if __name__ == "__main__":
     try:
         while True:
             create_damping_cmd(controller.robot)
+            create_zero_velocity_cmd(controller.robot)
             time.sleep(config.control_dt)
     except KeyboardInterrupt:
         pass

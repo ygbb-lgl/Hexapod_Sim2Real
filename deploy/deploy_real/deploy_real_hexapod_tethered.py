@@ -272,7 +272,7 @@ class Controller:
         if yaw_differ_value is not None:
             print(self.spool_q[0])
             print(self.yaw_sensor.get_angle())
-            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} degrees")
+            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} rad")
         else:
             print("No yaw differ angle data available.")
 
@@ -464,6 +464,7 @@ if __name__ == "__main__":
     try:
         while True:
             create_damping_cmd(controller.robot)
+            create_zero_velocity_cmd(controller.robot)
             time.sleep(config.control_dt)
     except KeyboardInterrupt:
         pass

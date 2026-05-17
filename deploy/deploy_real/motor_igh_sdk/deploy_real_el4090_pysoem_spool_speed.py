@@ -47,7 +47,7 @@ class RL_Real_PySOEM_WithSpoolSpeed(RL_Real_PySOEM):
         # Speed-mode command/state buffers (match RL_Real_Speed_PySOEM style)
         self.spool_command_buffer = type("SpoolCommandBuffer", (), {})()
         self.spool_command_buffer.target_speed_rpm = [0.0]
-        self.spool_command_buffer.current_limit_01a = [500]  # 50.0A
+        self.spool_command_buffer.current_limit_01a = [600]  # 50.0A
         self.spool_command_buffer.ack_status = [1]
 
         self.spool_state_buffer = type("SpoolStateBuffer", (), {})()

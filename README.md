@@ -18,3 +18,11 @@ udev
 ```bash
 sudo nano /etc/udev/rules.d/99-usb-serial.rules
 ```
+test yaw angle
+```bash
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python  /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/hexapod_tethered_utils/cable_arm_yaw_differ_test.py --ifname enp86s0 --motor-id 19 --slave-idx 3 --passage 1 --rpm 10 --current-limit-01a 500 --yaw-port /dev/ttyUSB_yaw --yaw-slave-id 1 --offset 5.8008
+```
+
+```bash 
+python deploy_only_cable.py --tension-ref 80 --plot --arm-with-gamepad
+```

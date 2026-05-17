@@ -100,33 +100,39 @@ class CableArmYawSensor:
         """主控制循环调用接口，非阻塞返回最近一次的有效角度"""
         with self._lock:
             return self._last_angle
+
+    @staticmethod
+    def _wrap_to_pi(rad: float) -> float:
+        """把角度 wrap 到 [-pi, pi) 以避免 0/2pi 越程突变。"""
+        return (float(rad) + math.pi) % (2.0 * math.pi) - math.pi
         
     # 计算 arm 的 yaw 角度
     def get_yaw_angle(self, motor_angle_deg, yaw_value, offset_deg):
-        """计算 arm 相对 body 的 yaw 角（单位：度）。
+        """计算 arm 相对 body 的 yaw 角（单位：弧度）。
 
         返回值：
         - float：有效角度
         - None：输入 yaw_value 为空/无效时
 
-        说明：
-        - yaw_value 期望为“传感器读到的角度（度）”
-        - motor_angle_deg / offset_deg 期望为“度”
+        说明（保持与现有调用兼容）：
+        - yaw_value: 传感器读到的角度（度，范围通常为 0~360）
+        - motor_angle_deg / offset_deg: 实际上按“弧度”传入（历史命名遗留）
+        - 为了处理 0/360 越程，这里会把最终结果 wrap 到 [-pi, pi)
         """
 
         # 读取线程启动后，前几次可能还没拿到有效值，此时 get_angle() 会返回 None
         if yaw_value is None:
             return None
 
-        # 兼容 numpy 标量/长度为1的数组输入
-        motor_angle_deg = float(motor_angle_deg)
-        yaw_value = math.radians(float(yaw_value))
-        offset_deg = float(offset_deg)
+        motor_angle_rad = float(motor_angle_deg)
+        motor_angle_rad = motor_angle_rad % (2 * math.pi)
+        yaw_value = (360.0 - float(yaw_value)) % 360.0
+        yaw_rad = math.radians(float(yaw_value))
+        offset_rad = float(offset_deg)
 
         # 根据核心公式计算 arm 相对 body 的 yaw 角
-        theta_arm_body = motor_angle_deg - yaw_value + offset_deg
-        #theta_arm_body = -theta_arm_body
-        return theta_arm_body
+        theta_arm_body = motor_angle_rad - yaw_rad + offset_rad
+        return self._wrap_to_pi(theta_arm_body)
     
     def stop(self):
         self.is_running = False
@@ -149,11 +155,11 @@ if __name__ == "__main__":
         try:
             while True:
                 ang = sensor.get_angle()
-                differ_angle = sensor.get_yaw_angle(-1.254 ,ang, 6.0289)
+                #differ_angle = sensor.get_yaw_angle(0.44,ang, 5.8008)
                 if ang is not None:
                     print(f"Arm Yaw Angle = {ang:.4f} 度")          
-                if differ_angle is not None:
-                    print(f"Arm differ Yaw Angle = {differ_angle:.4f} 度")
+                # if differ_angle is not None:
+                #     print(f"Arm differ Yaw Angle = {differ_angle:.4f} 度")
                 time.sleep(0.1)
         except KeyboardInterrupt:
             print("\n正在停止程序...")

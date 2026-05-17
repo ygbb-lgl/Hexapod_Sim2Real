@@ -93,6 +93,9 @@ class TensionSpeedController:
         else:
             self._tension_meas_f = alpha * tension_meas + (1.0 - alpha) * self._tension_meas_f
 
+        if self._tension_meas_f <= 1.0:
+            self._tension_meas_f = 0.0
+            
         tension_ref = float(tension_ref)
         e = tension_ref - float(self._tension_meas_f)
 
