@@ -1,6 +1,7 @@
 #from motor_igh_sdk.deploy_real_el4090_pysoem import RL_Real_PySOEM
 from motor_igh_sdk.deploy_real_el4090_pysoem_spool_speed import RL_Real_PySOEM_WithSpoolSpeed
 
+from motor_igh_sdk.deploy_real_el4090_pysoem_spool_torque import RL_Real_PySOEM_WithSpoolTorque
 class MotorMode:
     PR = 0  # Series Control for Pitch/Roll Joints
     AB = 1  # Parallel Control for A/B Joints
@@ -35,3 +36,10 @@ def create_zero_velocity_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
     robot.spool_command_buffer.target_speed_rpm[0] = 0.0
     robot.spool_command_buffer.current_limit_01a[0] = 500
     robot.spool_command_buffer.ack_status[0] = 1
+
+
+# 进入零力矩模式
+def create_zero_torque_cmd(robot: RL_Real_PySOEM_WithSpoolTorque):
+    robot.spool_command_buffer.target_torque_mNm[0] = 0.0
+    robot.spool_command_buffer.ack_status[0] = 1
+    robot.spool_command_buffer.ctrl_status[0] = 1
