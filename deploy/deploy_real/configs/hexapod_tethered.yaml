@@ -118,6 +118,23 @@ Kff_backward: 0.8
 # tension_deadband: 17.0
 tension_deadband: 10.0
 
-
 speed_deadband_rpm: 0.03
 tension_lpf_alpha: 1.0
+
+
+# ---------- torque control parameters -----------
+
+k_p_forward_rpm_per_unit_torque: 0.00
+k_p_backward_rpm_per_unit_torque: 0.00
+
+k_d_forward_rpm_per_unit_torque: 0.00
+k_d_backward_rpm_per_unit_torque: 0.00
+
+k_i_forward_rpm_per_unit_torque: 0.000
+k_i_backward_rpm_per_unit_torque: 0.00
+
+Kff_forward_torque: 1.0
+Kff_backward_torque: 1.0
+
+torque_limit: 90.0
+torque_deadband: 0.07

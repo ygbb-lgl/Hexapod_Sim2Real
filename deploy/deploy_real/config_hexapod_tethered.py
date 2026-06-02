@@ -58,3 +58,20 @@ class Config:
             self.tsc_speed_deadband_rpm = config["speed_deadband_rpm"]
             self.tsc_tension_lpf_alpha = config["tension_lpf_alpha"]
             self.tsc_speed_limit_rpm = config["speed_limit_rpm"]
+
+
+            # For torque controller:
+            self.tsc_k_p_forward_rpm_per_unit_torque = config["k_p_forward_rpm_per_unit_torque"]
+            self.tsc_k_p_backward_rpm_per_unit_torque = config["k_p_backward_rpm_per_unit_torque"]
+
+            self.tsc_k_d_forward_rpm_per_unit_torque = config["k_d_forward_rpm_per_unit_torque"]
+            self.tsc_k_d_backward_rpm_per_unit_torque = config["k_d_backward_rpm_per_unit_torque"]
+
+            self.tsc_k_i_forward_rpm_per_unit_torque = config["k_i_forward_rpm_per_unit_torque"]
+            self.tsc_k_i_backward_rpm_per_unit_torque = config["k_i_backward_rpm_per_unit_torque"]           
+
+            self.tsc_Kff_forward_torque = config["Kff_forward_torque"]
+            self.tsc_Kff_backward_torque = config["Kff_backward_torque"]
+
+            self.tsc_torque_limit = config["torque_limit"]
+            self.tsc_torque_deadband = config["torque_deadband"]
