@@ -222,6 +222,59 @@ def set_motor_speed(msg, passage, motor_id, spd_rpm, cur_01a, ack_status=1):
         motor_slot.data[5] = (cur_01a >> 8) & 0xFF
         motor_slot.data[6] = cur_01a & 0xFF
 
+
+def set_motor_cur_tor(msg, passage, motor_id, cur_tor_001, ctrl_status=1, ack_status=1):
+    """Servo current/torque/brake control (official C: set_motor_cur_tor).
+
+    Args:
+        msg: EtherCAT_Msg
+        passage: 1..6
+        motor_id: motor CAN id
+        cur_tor_001: desired current/torque in 0.01(A or Nm) units (int16).
+            - torque mode (ctrl_status=1): clamp [-3000, 3000] => [-30.00, 30.00]
+            - current mode (ctrl_status=0): clamp [-2000, 2000] => [-20.00, 20.00]
+        ctrl_status:
+            0=current control
+            1=torque control
+            2=variable damping brake (full brake)
+            3=energy consumption brake
+            4=regenerative brake
+        ack_status: 0..3
+    """
+    idx = passage - 1
+    motor_slot = msg.motor[idx]
+
+    ctrl_status = int(ctrl_status)
+    ack_status = int(ack_status)
+    if ack_status < 0 or ack_status > 3:
+        raise ValueError(f"ack_status must be 0..3, got {ack_status}")
+    if ctrl_status < 0 or ctrl_status > 7:
+        raise ValueError(f"ctrl_status must be 0..7, got {ctrl_status}")
+
+    cur_tor_001 = int(cur_tor_001)
+    if ctrl_status != 0:
+        cur_tor_001 = int(clamp(cur_tor_001, -3000, 3000))
+    else:
+        cur_tor_001 = int(clamp(cur_tor_001, -2000, 2000))
+
+    msg.can_ide = 0
+    motor_slot.rtr = 0
+    motor_slot.id = int(motor_id)
+    motor_slot.dlc = 3
+
+    motor_slot.data[0] = 0x60 | ((ctrl_status & 0x07) << 2) | (ack_status & 0x03)
+    motor_slot.data[1] = (cur_tor_001 >> 8) & 0xFF
+    motor_slot.data[2] = cur_tor_001 & 0xFF
+
+
+def set_motor_torque(msg, passage, motor_id, torque_nm, ack_status=1):
+    """Convenience wrapper: torque control with float torque in Nm.
+
+    Official scaling: 0.01 Nm per LSB (ratio 100:1).
+    """
+    cur_tor_001 = int(round(float(torque_nm) * 100.0))
+    set_motor_cur_tor(msg, passage, motor_id, cur_tor_001, ctrl_status=1, ack_status=ack_status)
+
 def _u8_to_float_le(b0: int, b1: int, b2: int, b3: int) -> float:
     return ctypes.c_float.from_buffer_copy(bytes([b0, b1, b2, b3])).value
 
