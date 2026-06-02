@@ -7,7 +7,7 @@ dof_vel_scale: 1.0
 lin_vel_scale: 1.0
 
 
-policy_path: "{ROOT_DIR}/deploy/pre_train/hexapod_tethered/policy_10000.pt"
+policy_path: "{ROOT_DIR}/deploy/pre_train/hexapod_tethered/policy_9500.pt"
 
 joint2motor_idx: [13, 18, 17,
                   7, 9, 8, 
@@ -75,8 +75,9 @@ num_leggeds_actions: 18
 num_actions: 19
 num_obs: 70
 
-#offset_deg: 0.8332
-offset_deg: -1.9903
+#offset_deg: -1.0485
+offset_deg: -2.2275
+#offset_deg: -1.9903
 #offset_deg: 3.3865
 # Optional: reference tension -> spool speed controller
 # Output unit is RPM and will be written into `robot.spool_command_buffer.target_speed_rpm[0]`.
@@ -87,8 +88,19 @@ speed_limit_rpm: 157.0
 
 # Feedback: paper-style asymmetric Kp (forward/backward)
 # If you only want one Kp, you can set k_p_tension_rpm_per_unit and omit the two fields below.
-k_p_forward_rpm_per_unit: 0.5
-k_p_backward_rpm_per_unit: 2.0
+k_p_forward_rpm_per_unit: 0.11
+k_p_backward_rpm_per_unit: 0.11
+
+k_d_forward_rpm_per_unit: 0.00
+k_d_backward_rpm_per_unit: 0.00
+
+k_i_forward_rpm_per_unit: 0.000
+#k_i_forward_rpm_per_unit: 0.001
+k_i_backward_rpm_per_unit: 0.00
+# k_p_forward_rpm_per_unit: 0.0
+# k_p_backward_rpm_per_unit: 0.0
+# k_d_forward_rpm_per_unit: 0.0
+# k_d backward_rpm_per_unit: 0.0
 # Backward compatible single-Kp option:
 # k_p_tension_rpm_per_unit: 0.2
 
@@ -97,11 +109,15 @@ k_p_backward_rpm_per_unit: 2.0
 ff_enabled: True
 ff_max_rpm: 157.0
 ff_max_speed_mps: 1.0
-ff_radius_m: 0.075
-Kff: 1.0
+ff_radius_m: 0.07
+
+Kff_forward: 0.45
+Kff_backward: 0.8
 
 # 拉力死区
-tension_deadband: 5.0
+# tension_deadband: 17.0
+tension_deadband: 10.0
 
-speed_deadband_rpm: 0.05
+
+speed_deadband_rpm: 0.03
 tension_lpf_alpha: 1.0

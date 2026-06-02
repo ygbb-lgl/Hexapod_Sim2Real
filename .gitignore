@@ -163,3 +163,4 @@ logs
  
 # Generated motor logs
 motor_logs_*/
+cable_only_logs_*/

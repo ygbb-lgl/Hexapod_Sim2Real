@@ -11,8 +11,8 @@ POS_MIN = -12.5
 POS_MAX = 12.5
 SPD_MIN = -18.0
 SPD_MAX = 18.0
-T_MIN = -80.0
-T_MAX = 80.0
+T_MIN = -85.0
+T_MAX = 85.0
 I_MIN = -60.0
 I_MAX = 60.0
 

@@ -115,7 +115,7 @@ def main() -> int:
 	ap.add_argument(
 		"--offset",
 		type=float,
-		default=-1.9903,
+		default=-2.2275,
 		help="get_yaw_angle 的 offset 参数（建议直接填弧度，保持与 motor_angle 一致）",
 	)
 

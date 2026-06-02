@@ -301,10 +301,6 @@ class Controller:
                 speed_sign=float(self.config.tsc_speed_sign),
                 k_p_forward_rpm_per_unit=float(self.config.tsc_k_p_forward_rpm_per_unit),
                 k_p_backward_rpm_per_unit=float(self.config.tsc_k_p_backward_rpm_per_unit),
-                k_d_forward_rpm_per_unit=float(self.config.tsc_k_d_forward_rpm_per_unit),
-                k_d_backward_rpm_per_unit=float(self.config.tsc_k_d_backward_rpm_per_unit),
-                k_i_forward_rpm_per_unit=float(self.config.tsc_k_i_forward_rpm_per_unit),
-                k_i_backward_rpm_per_unit=float(self.config.tsc_k_i_backward_rpm_per_unit),
                 ff_enabled=bool(self.config.tsc_ff_enabled),
                 ff_max_rpm=float(self.config.tsc_ff_max_rpm),
                 ff_max_speed_mps=float(self.config.tsc_ff_max_speed_mps),
@@ -641,7 +637,7 @@ class Controller:
         # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_speed_rpm,feedback_rpm, rff_rpm = self.tension_speed_controller.step(
+        spool_speed_rpm = self.tension_speed_controller.step(
             speed_input=float(cmd[0]),
             #speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),

@@ -70,6 +70,8 @@ class RealTimePlotter:
 		self._imu_vx = []
 		self._spool_cmd_rpm = []
 		self._spool_vel_rpm = []
+		self._feedback_rpm = []
+		self._rff_rpm = []
 
 		if not self.enabled:
 			return
@@ -81,7 +83,7 @@ class RealTimePlotter:
 			self._plt.ion()
 
 			self._fig, self._axs = self._plt.subplots(
-				4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
+				5, 1, sharex=True, figsize=(10, 10), constrained_layout=True
 			)
 			self._fig.canvas.manager.set_window_title("Cable-only Debug")
 
@@ -112,6 +114,14 @@ class RealTimePlotter:
 			ax.grid(True)
 			ax.legend(loc="upper right")
 
+			ax = self._axs[4]
+			(self._ln_feedback_rpm,) = ax.plot([], [], 'r-', label="feedback_rpm", linewidth=1.5)
+			(self._ln_rff_rpm,) = ax.plot([], [], 'b--', label="rff_rpm", linewidth=1.5)
+			ax.set_ylabel("RPM")
+			ax.set_xlabel("Time (s)")
+			ax.grid(True)
+			ax.legend(loc="upper right")
+
 			self._ok = True
 		except Exception as e:
 			self._ok = False
@@ -127,6 +137,9 @@ class RealTimePlotter:
 		imu_vx: float,
 		spool_cmd_rpm: float,
 		spool_vel_rpm: float,
+		feedback_rpm: float,
+		rff_rpm: float,
+
 	) -> None:
 		if not self.enabled or not self._ok:
 			return
@@ -139,6 +152,8 @@ class RealTimePlotter:
 		self._imu_vx.append(float(imu_vx))
 		self._spool_cmd_rpm.append(float(spool_cmd_rpm))
 		self._spool_vel_rpm.append(float(spool_vel_rpm))
+		self._feedback_rpm.append(float(feedback_rpm))
+		self._rff_rpm.append(float(rff_rpm))
 
 		if len(self._t) > self._maxlen:
 			self._t = self._t[-self._maxlen :]
@@ -148,6 +163,8 @@ class RealTimePlotter:
 			self._imu_vx = self._imu_vx[-self._maxlen :]
 			self._spool_cmd_rpm = self._spool_cmd_rpm[-self._maxlen :]
 			self._spool_vel_rpm = self._spool_vel_rpm[-self._maxlen :]
+			self._feedback_rpm = self._feedback_rpm[-self._maxlen :]
+			self._rff_rpm = self._rff_rpm[-self._maxlen :]
 
 		if (self._step % self.plot_every_n) != 0:
 			return
@@ -162,6 +179,8 @@ class RealTimePlotter:
 		self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
 		self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_rpm, dtype=np.float32))
 		self._ln_spool_vel.set_data(t, np.asarray(self._spool_vel_rpm, dtype=np.float32))
+		self._ln_feedback_rpm.set_data(t, np.asarray(self._feedback_rpm, dtype=np.float32))
+		self._ln_rff_rpm.set_data(t, np.asarray(self._rff_rpm, dtype=np.float32))
 
 		for ax in self._axs:
 			ax.relim()
@@ -298,6 +317,10 @@ def main() -> int:
 			speed_sign=float(cfg.tsc_speed_sign),
 			k_p_forward_rpm_per_unit=float(cfg.tsc_k_p_forward_rpm_per_unit),
 			k_p_backward_rpm_per_unit=float(cfg.tsc_k_p_backward_rpm_per_unit),
+			k_d_forward_rpm_per_unit=float(cfg.tsc_k_d_forward_rpm_per_unit),
+			k_d_backward_rpm_per_unit=float(cfg.tsc_k_d_backward_rpm_per_unit),
+			k_i_forward_rpm_per_unit=float(cfg.tsc_k_i_forward_rpm_per_unit),
+			k_i_backward_rpm_per_unit=float(cfg.tsc_k_i_backward_rpm_per_unit),
 			ff_enabled=bool(cfg.tsc_ff_enabled),
 			ff_max_rpm=float(cfg.tsc_ff_max_rpm),
 			ff_max_speed_mps=float(cfg.tsc_ff_max_speed_mps),
@@ -306,7 +329,8 @@ def main() -> int:
 			speed_deadband_rpm=float(cfg.tsc_speed_deadband_rpm),
 			tension_deadband=float(cfg.tsc_tension_deadband),
 			tension_lpf_alpha=float(cfg.tsc_tension_lpf_alpha),
-			Kff=float(cfg.tsc_Kff),
+            Kff_forward=float(cfg.tsc_Kff_forward),
+            Kff_backward=float(cfg.tsc_Kff_backward),
 		)
 	)
 
@@ -375,6 +399,7 @@ def main() -> int:
 			if gamepad is not None:
 				if gamepad.consume_a_click():
 					state.armed = True
+					print("press A")
 				if gamepad.consume_b_click():
 					state.armed = False
 				# Continuous LB to exit
@@ -408,23 +433,31 @@ def main() -> int:
 			yaw_differ_rad = float(state.last_yaw_differ)
 
 			# Decide command
+			t=time.time()
 			tension_ref = float(args.tension_ref)
 			spool_cmd_rpm = 0.0
+			feedback_rpm = 0.0
+			rff_rpm = 0.0
 
 			# Safety: if no valid tension measurement, hold 0 rpm
 			if state.armed and (tension_meas is not None):
-				spool_cmd_rpm = tsc.step(
-					speed_input=float(imu_vx),
+				spool_cmd_rpm,feedback_rpm, rff_rpm= tsc.step(
+					speed_input=float(0),
+					#t=time.time(),
+					#speed_input=float(imu_vx),
 					yaw=float(yaw_differ_rad),
+					#yaw=float(0),
 					tension_ref=float(tension_ref),
 					tension_meas=float(tension_meas),
 				)
 			else:
 				spool_cmd_rpm = 0.0
+				feedback_rpm = 0.0
+				rff_rpm = 0.0
 
 			robot.spool_command_buffer.target_speed_rpm[0] = float(spool_cmd_rpm)
 			spool_vel_rpm = _rpm_from_radps(float(robot.spool_state_buffer.velocity[0]))
-
+			# print(imu_vx)
 			# Log + plot
 			t_s = time.time() - t0
 			log_w.writerow(
@@ -450,6 +483,8 @@ def main() -> int:
 				imu_vx=float(imu_vx),
 				spool_cmd_rpm=float(spool_cmd_rpm),
 				spool_vel_rpm=float(spool_vel_rpm),
+				feedback_rpm=float(feedback_rpm), 
+    			rff_rpm=float(rff_rpm), 
 			)
 
 			# Control timing

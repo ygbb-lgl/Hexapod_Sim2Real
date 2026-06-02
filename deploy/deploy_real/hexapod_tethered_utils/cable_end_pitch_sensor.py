@@ -126,7 +126,7 @@ class CableEndPitchSensor:
                 with self._lock:
                     deg_angle = float(angle)
                     # 标定角
-                    deg_angle = 124 - deg_angle
+                    deg_angle = 159 - deg_angle
                     #self._last_angle = deg_angle  # 直接使用角度值，单位为度
                     self._last_angle = math.radians(deg_angle)  # 转换为弧度
                     self._last_ts = time.time()
