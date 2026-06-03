@@ -133,7 +133,7 @@ if __name__ == "__main__":
     # NOTE:
     #   default torque is 0.0 (safer); set a small value to test.
     ifname = sys.argv[1] if len(sys.argv) > 1 else "enp86s0"
-    torque_nm = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
+    torque_nm = float(sys.argv[2]) if len(sys.argv) > 2 else 2.0
 
     print(
         f"Launching RL_Real_PySOEM_WithSpoolTorque on {ifname} "

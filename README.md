@@ -26,3 +26,11 @@ sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python  /home/hexapod/Hexapod_
 ```bash 
 sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_only_cable.py --tension-ref 100 --plot --arm-with-gamepad 
 ```
+
+```bash 
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_only_cable_torque.py --tension-ref 100 --plot --arm-with-gamepad 
+```
+
+```bash
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/motor_igh_sdk/deploy_real_el4090_pysoem_spool_torque.py
+```

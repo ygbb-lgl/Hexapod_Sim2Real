@@ -40,6 +40,6 @@ def create_zero_velocity_cmd(robot: RL_Real_PySOEM_WithSpoolSpeed):
 
 # 进入零力矩模式
 def create_zero_torque_cmd(robot: RL_Real_PySOEM_WithSpoolTorque):
-    robot.spool_command_buffer.target_torque_mNm[0] = 0.0
+    robot.spool_command_buffer.target_torque_nm[0] = 0.0
     robot.spool_command_buffer.ack_status[0] = 1
     robot.spool_command_buffer.ctrl_status[0] = 1

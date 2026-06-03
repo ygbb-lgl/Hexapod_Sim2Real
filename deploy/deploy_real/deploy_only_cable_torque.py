@@ -44,7 +44,7 @@ from hexapod_tethered_utils.joystick_reader import Gamepad
 from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
 from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
-from common.command_helper_hexapod import create_damping_cmd, create_zero_velocity_cmd
+from common.command_helper_hexapod import create_damping_cmd, create_zero_velocity_cmd,create_zero_torque_cmd
 
 import config_hexapod_tethered
 from config_hexapod_tethered import Config
@@ -338,7 +338,7 @@ def main() -> int:
 	robot.spool_command_buffer.ctrl_status[0] = 1
 	robot.spool_command_buffer.ack_status[0] = 1
 	create_damping_cmd(robot)
-	create_zero_velocity_cmd(robot)
+	create_zero_torque_cmd(robot)
 
 	if not robot.start():
 		print("[CableOnly][ERROR] EtherCAT start failed.")
@@ -367,7 +367,7 @@ def main() -> int:
 	def _cleanup():
 		try:
 			robot.spool_command_buffer.target_torque_nm[0] = 0.0
-			create_zero_velocity_cmd(robot)
+			create_zero_torque_cmd(robot)
 			time.sleep(0.05)
 		except Exception:
 			pass
