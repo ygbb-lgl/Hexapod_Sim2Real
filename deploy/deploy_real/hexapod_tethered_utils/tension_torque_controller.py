@@ -165,7 +165,7 @@ class TensionTorqueController:
         else:
             ff_torque_nm = 0.0
 
-        feedback_torque_nm = p_term + d_term + i_term
+        feedback_torque_nm = (p_term + d_term + i_term) * float(self.cfg.ff_radius_m)
         torque_nm_unsat = ff_torque_nm + feedback_torque_nm
 
         # Apply sign convention before deadband/saturation.

@@ -1,8 +1,8 @@
-"""Standalone cable tension tracking debug (spool speed control only).
+"""Standalone cable tension tracking debug (spool torque control).
 
 目的：把“绳子拉力跟踪”从足式机器人整体控制中拆出来，单独调参。
 
-- 只使用：IMU + 拉力传感器 + yaw/pitch 传感器 + spool 速度电机
+- 只使用：IMU + 拉力传感器 + yaw/pitch 传感器 + spool 力矩电机
 - 腿部 18 关节保持阻尼（不跑策略/不下发位置），避免互相耦合
 - 你用手推机器人模拟运动：IMU 速度用于前馈，yaw 用于投影修正
 
@@ -71,10 +71,10 @@ class RealTimePlotter:
 		self._tension_ref = []
 		self._yaw = []
 		self._imu_vx = []
-		self._spool_cmd_rpm = []
-		self._spool_vel_rpm = []
-		self._feedback_rpm = []
-		self._rff_rpm = []
+		self._spool_cmd_torque = []
+		self._spool_vel_torque = []
+		self._feedback_torque = []
+		self._rff_torque = []
 
 		if not self.enabled:
 			return
@@ -110,17 +110,17 @@ class RealTimePlotter:
 			ax.legend(loc="upper right")
 
 			ax = self._axs[3]
-			(self._ln_spool_cmd,) = ax.plot([], [], label="spool_cmd_rpm")
-			(self._ln_spool_vel,) = ax.plot([], [], label="spool_vel_rpm")
+			(self._ln_spool_cmd,) = ax.plot([], [], label="spool_cmd_torque")
+			(self._ln_spool_torque,) = ax.plot([], [], label="spool_vel_torque")
 			ax.set_ylabel("Spool")
 			ax.set_xlabel("Time (s)")
 			ax.grid(True)
 			ax.legend(loc="upper right")
 
 			ax = self._axs[4]
-			(self._ln_feedback_rpm,) = ax.plot([], [], 'r-', label="feedback_rpm", linewidth=1.5)
-			(self._ln_rff_rpm,) = ax.plot([], [], 'b--', label="rff_rpm", linewidth=1.5)
-			ax.set_ylabel("RPM")
+			(self._ln_feedback_torque,) = ax.plot([], [], 'r-', label="feedback_torque", linewidth=1.5)
+			(self._ln_rff_torque,) = ax.plot([], [], 'b--', label="rff_torque", linewidth=1.5)
+			ax.set_ylabel("Torque (Nm)")
 			ax.set_xlabel("Time (s)")
 			ax.grid(True)
 			ax.legend(loc="upper right")
@@ -138,10 +138,10 @@ class RealTimePlotter:
 		tension_ref: float,
 		yaw_differ_rad: float,
 		imu_vx: float,
-		spool_cmd_rpm: float,
-		spool_vel_rpm: float,
-		feedback_rpm: float,
-		rff_rpm: float,
+		spool_cmd_torque: float,
+		spool_vel_torque: float,
+		feedback_torque: float,
+		rff_torque: float,
 
 	) -> None:
 		if not self.enabled or not self._ok:
@@ -153,10 +153,10 @@ class RealTimePlotter:
 		self._tension_ref.append(float(tension_ref))
 		self._yaw.append(float(yaw_differ_rad))
 		self._imu_vx.append(float(imu_vx))
-		self._spool_cmd_rpm.append(float(spool_cmd_rpm))
-		self._spool_vel_rpm.append(float(spool_vel_rpm))
-		self._feedback_rpm.append(float(feedback_rpm))
-		self._rff_rpm.append(float(rff_rpm))
+		self._spool_cmd_torque.append(float(spool_cmd_torque))
+		self._spool_vel_torque.append(float(spool_vel_torque))
+		self._feedback_torque.append(float(feedback_torque))
+		self._rff_torque.append(float(rff_torque))
 
 		if len(self._t) > self._maxlen:
 			self._t = self._t[-self._maxlen :]
@@ -164,10 +164,10 @@ class RealTimePlotter:
 			self._tension_ref = self._tension_ref[-self._maxlen :]
 			self._yaw = self._yaw[-self._maxlen :]
 			self._imu_vx = self._imu_vx[-self._maxlen :]
-			self._spool_cmd_rpm = self._spool_cmd_rpm[-self._maxlen :]
-			self._spool_vel_rpm = self._spool_vel_rpm[-self._maxlen :]
-			self._feedback_rpm = self._feedback_rpm[-self._maxlen :]
-			self._rff_rpm = self._rff_rpm[-self._maxlen :]
+			self._spool_cmd_torque = self._spool_cmd_torque[-self._maxlen :]
+			self._spool_vel_torque = self._spool_vel_torque[-self._maxlen :]
+			self._feedback_torque = self._feedback_torque[-self._maxlen :]
+			self._rff_torque = self._rff_torque[-self._maxlen :]
 
 		if (self._step % self.plot_every_n) != 0:
 			return
@@ -180,10 +180,10 @@ class RealTimePlotter:
 		self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
 		self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
 		self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
-		self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_rpm, dtype=np.float32))
-		self._ln_spool_vel.set_data(t, np.asarray(self._spool_vel_rpm, dtype=np.float32))
-		self._ln_feedback_rpm.set_data(t, np.asarray(self._feedback_rpm, dtype=np.float32))
-		self._ln_rff_rpm.set_data(t, np.asarray(self._rff_rpm, dtype=np.float32))
+		self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_torque, dtype=np.float32))
+		self._ln_spool_torque.set_data(t, np.asarray(self._spool_vel_torque, dtype=np.float32))
+		self._ln_feedback_torque.set_data(t, np.asarray(self._feedback_torque, dtype=np.float32))
+		self._ln_rff_torque.set_data(t, np.asarray(self._rff_torque, dtype=np.float32))
 
 		for ax in self._axs:
 			ax.relim()
@@ -297,8 +297,8 @@ def main() -> int:
 			"tension_ref",
 			"yaw_differ_rad",
 			"imu_vx",
-			"spool_cmd_rpm",
-			"spool_vel_rpm",
+			"spool_cmd_torque",
+			"spool_vel_torque",
 			"spool_pos_rad",
 			"yaw_raw_deg",
 		]
@@ -353,7 +353,7 @@ def main() -> int:
 	tension_sensor = CableTensionSensor(port="/dev/ttyUSB_cable_tension", baudrate=115200)
 	tension_started = bool(tension_sensor.start())
 	if not tension_started:
-		print("[CableOnly][WARN] tension sensor start failed; spool will hold 0 RPM")
+		print("[CableOnly][WARN] tension sensor start failed; spool will hold 0 torque")
 
 	yaw_sensor = CableArmYawSensor(port="/dev/ttyUSB_yaw", baudrate=115200)
 	yaw_started = bool(yaw_sensor.start())
@@ -438,7 +438,7 @@ def main() -> int:
 			feedback_torque = 0.0
 			rff_torque = 0.0
 
-			# Safety: if no valid tension measurement, hold 0 rpm
+			# Safety: if no valid tension measurement, hold 0 torque
 			if state.armed and (tension_meas is not None):
 				spool_cmd_torque,feedback_torque, rff_torque= tsc.step(
 					speed_input=float(0),
@@ -481,9 +481,9 @@ def main() -> int:
 				yaw_differ_rad=float(yaw_differ_rad),
 				imu_vx=float(imu_vx),
 				spool_cmd_torque=float(spool_cmd_torque),
-				spool_torque=float(spool_torque),
-				feedback_torque=float(feedback_torque), 
-    			rff_torque=float(rff_torque), 
+				spool_vel_torque=float(spool_torque),
+				feedback_torque=float(feedback_torque),
+				rff_torque=float(rff_torque), 
 			)
 
 			# Control timing

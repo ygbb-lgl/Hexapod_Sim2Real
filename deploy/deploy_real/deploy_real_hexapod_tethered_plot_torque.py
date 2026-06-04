@@ -59,8 +59,8 @@ class RealTimePlotter:
         self._tension_ref = deque(maxlen=self._maxlen)
         self._yaw = deque(maxlen=self._maxlen)
         self._imu_vx = deque(maxlen=self._maxlen)
-        self._spool_cmd_rpm = deque(maxlen=self._maxlen)
-        self._spool_vel_buf = deque(maxlen=self._maxlen)
+        self._spool_cmd_torque = deque(maxlen=self._maxlen)
+        self._spool_torque_buf = deque(maxlen=self._maxlen)
 
         # CSV logger (best-effort)
         if self.csv_enabled:
@@ -124,11 +124,11 @@ class RealTimePlotter:
             ax.grid(True)
             ax.legend(loc="upper right")
 
-            # 4) spool cmd rpm + buffer velocity
+            # 4) spool cmd torque + buffer torque
             ax = self._axs[3]
             (self._ln_spool_cmd,) = ax.plot([], [], label="spool_torque_cmd")
-            (self._ln_spool_vel,) = ax.plot([], [], label="spool_torque_buffer")
-            ax.set_ylabel("Spool")
+            (self._ln_spool_torque_buf,) = ax.plot([], [], label="spool_torque_buffer")
+            ax.set_ylabel("Spool Torque (Nm)")
             ax.set_xlabel("Time (s)")
             ax.grid(True)
             ax.legend(loc="upper right")
@@ -189,8 +189,8 @@ class RealTimePlotter:
         self._tension_ref.append(float(target_tension))
         self._yaw.append(float(yaw_differ_value))
         self._imu_vx.append(float(imu_vx))
-        self._spool_cmd_rpm.append(float(spool_torque_cmd))
-        self._spool_vel_buf.append(float(spool_torque_buffer))
+        self._spool_cmd_torque.append(float(spool_torque_cmd))
+        self._spool_torque_buf.append(float(spool_torque_buffer))
 
         if (self._step % self.plot_every_n) != 0:
             return
@@ -203,8 +203,8 @@ class RealTimePlotter:
         self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
         self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
         self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
-        self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_rpm, dtype=np.float32))
-        self._ln_spool_vel.set_data(t, np.asarray(self._spool_vel_buf, dtype=np.float32))
+        self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_torque, dtype=np.float32))
+        self._ln_spool_torque_buf.set_data(t, np.asarray(self._spool_torque_buf, dtype=np.float32))
 
         for ax in self._axs:
             ax.relim()
@@ -647,7 +647,7 @@ class Controller:
             tension_meas=float(tension_value),
         )
         self.robot.spool_command_buffer.target_torque[0] = float(spool_torque_cmd)
-        self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure velocity is updated for next control step
+        self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
         # Update real-time plots (best-effort; does nothing if disabled)
         if getattr(self, "plotter", None) is not None:

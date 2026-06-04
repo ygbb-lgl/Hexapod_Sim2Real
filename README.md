@@ -28,7 +28,7 @@ sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_S
 ```
 
 ```bash 
-sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_only_cable_torque.py --tension-ref 100 --plot --arm-with-gamepad 
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_only_cable_torque.py --tension-ref 50 --plot --arm-with-gamepad 
 ```
 
 ```bash
