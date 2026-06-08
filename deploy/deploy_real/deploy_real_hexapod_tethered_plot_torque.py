@@ -646,7 +646,7 @@ class Controller:
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
         )
-        self.robot.spool_command_buffer.target_torque[0] = float(spool_torque_cmd)
+        self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
         # Update real-time plots (best-effort; does nothing if disabled)
@@ -657,7 +657,7 @@ class Controller:
                 target_tension=float(target_tension),
                 yaw_differ_value=float(yaw_differ_value),
                 imu_vx=float(cmd[0]),
-                spool_torque=float(spool_torque_cmd),
+                spool_torque_cmd=float(spool_torque_cmd),
                 spool_torque_buffer=float(spool_torque),
             )
         time.sleep(self.config.control_dt)

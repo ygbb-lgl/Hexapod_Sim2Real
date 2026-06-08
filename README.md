@@ -34,3 +34,7 @@ sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_S
 ```bash
 sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/motor_igh_sdk/deploy_real_el4090_pysoem_spool_torque.py
 ```
+
+```bash 
+sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_Sim2Real/deploy/deploy_real/deploy_real_hexapod_tethered_speed.py enp86s0
+```
