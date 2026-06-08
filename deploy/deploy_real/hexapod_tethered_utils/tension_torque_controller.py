@@ -143,6 +143,7 @@ class TensionTorqueController:
         p_term = kp * e
         d_term = kd * derivative
         i_term = ki * int_candidate
+        error = e
         self._last_error = e
 
         Kff_forward = float(self.cfg.Kff_forward)
@@ -183,4 +184,4 @@ class TensionTorqueController:
             self._int_error = int_candidate
         torque_cmd = torque_cmd_sat
         #return speed_rpm
-        return torque_cmd,feedback_torque_nm, ff_torque_nm
+        return torque_cmd,feedback_torque_nm, ff_torque_nm,error

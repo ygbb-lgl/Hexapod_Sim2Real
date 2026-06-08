@@ -437,10 +437,11 @@ def main() -> int:
 			spool_cmd_torque = 0.0
 			feedback_torque = 0.0
 			rff_torque = 0.0
+			error = 0.0
 
 			# Safety: if no valid tension measurement, hold 0 torque
 			if state.armed and (tension_meas is not None):
-				spool_cmd_torque,feedback_torque, rff_torque= tsc.step(
+				spool_cmd_torque,feedback_torque, rff_torque,error= tsc.step(
 					speed_input=float(0),
 					#t=time.time(),
 					#speed_input=float(imu_vx),
@@ -455,7 +456,8 @@ def main() -> int:
 				rff_torque = 0.0
 
 			robot.spool_command_buffer.target_torque_nm[0] = float(spool_cmd_torque)
-			spool_torque = float(robot.spool_state_buffer.torque[0])
+			spool_torque = 2.1 * float(robot.spool_state_buffer.torque[0])
+			print(f"feedback_torque:{feedback_torque},error:{float(error)}")
 			# print(imu_vx)
 			# Log + plot
 			t_s = time.time() - t0

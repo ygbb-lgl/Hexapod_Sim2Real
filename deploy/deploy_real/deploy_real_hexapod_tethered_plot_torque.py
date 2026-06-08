@@ -639,7 +639,7 @@ class Controller:
         # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_torque_cmd,feedback_torque, rff_torque = self.tension_torque_controller.step(
+        spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
             speed_input=float(cmd[0]),
             #speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),
