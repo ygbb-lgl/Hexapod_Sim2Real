@@ -52,7 +52,6 @@ class TensionTorqueControllerConfig:
 
     torque_limit: float = 90.0  # Nm, saturation limit for output torque command
     torque_deadband: float = 0.0  # Nm, deadband for output torque command
-    speed_sign_torque_compensation_nm: float = 1.5  # Nm, + when speed > 0, - when speed < 0
     # Filtering and integrator clamping
     tension_lpf_alpha: float = 1.0
     Kff_forward: float = 0.0  # Feedforward scaling factor (paper-style), unitless multiplier on ff_rpm
@@ -113,10 +112,6 @@ class TensionTorqueController:
         # Optional deadband on tension error.
         if abs(e) < float(self.cfg.tension_deadband):
             e = 0.0
-        # Large error protection: when error exceeds 70 N, treat as unreliable
-        # measurement and zero out error to prevent dangerous torque commands.
-        if abs(e) > 70.0:
-            e = 0.0
 
         self._prev_e = e
 
@@ -176,11 +171,6 @@ class TensionTorqueController:
 
         # Apply sign convention before deadband/saturation.
         torque_cmd = torque_nm_unsat * float(self.cfg.speed_sign)
-        speed_compensation_nm = float(self.cfg.speed_sign_torque_compensation_nm)
-        if v_proj > 0.0:
-            torque_cmd += speed_compensation_nm
-        elif v_proj < 0.0:
-            torque_cmd -= speed_compensation_nm
 
         # Deadband + saturation
         if abs(torque_cmd) < float(self.cfg.torque_deadband):

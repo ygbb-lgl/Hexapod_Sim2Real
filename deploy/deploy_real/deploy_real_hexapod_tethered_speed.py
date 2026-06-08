@@ -59,6 +59,7 @@ class RealTimePlotter:
         self._tension_ref = deque(maxlen=self._maxlen)
         self._yaw = deque(maxlen=self._maxlen)
         self._imu_vx = deque(maxlen=self._maxlen)
+        self._cmd_vx = deque(maxlen=self._maxlen)
         self._spool_cmd_rpm = deque(maxlen=self._maxlen)
         self._spool_vel_buf = deque(maxlen=self._maxlen)
 
@@ -77,6 +78,7 @@ class RealTimePlotter:
                         "target_tension",
                         "yaw_differ_value",
                         "imu_vx",
+                        "cmd_vx",
                         "spool_speed_cmd_rpm",
                         "spool_state_rpm",
                     ]
@@ -117,10 +119,11 @@ class RealTimePlotter:
             ax.grid(True)
             ax.legend(loc="upper right")
 
-            # 3) imu vx
+            # 3) forward speed
             ax = self._axs[2]
             (self._ln_imu_vx,) = ax.plot([], [], label="imu_vx")
-            ax.set_ylabel("IMU vx (m/s)")
+            (self._ln_cmd_vx,) = ax.plot([], [], label="cmd_vx")
+            ax.set_ylabel("vx (m/s)")
             ax.grid(True)
             ax.legend(loc="upper right")
 
@@ -155,6 +158,7 @@ class RealTimePlotter:
         target_tension: float,
         yaw_differ_value: float,
         imu_vx: float,
+        cmd_vx: float,
         spool_speed_rpm: float,
         spool_velocity_buffer: float,
     ) -> None:
@@ -170,6 +174,7 @@ class RealTimePlotter:
                         float(target_tension),
                         float(yaw_differ_value),
                         float(imu_vx),
+                        float(cmd_vx),
                         float(spool_speed_rpm),
                         float(spool_velocity_buffer),
                     ]
@@ -189,6 +194,7 @@ class RealTimePlotter:
         self._tension_ref.append(float(target_tension))
         self._yaw.append(float(yaw_differ_value))
         self._imu_vx.append(float(imu_vx))
+        self._cmd_vx.append(float(cmd_vx))
         self._spool_cmd_rpm.append(float(spool_speed_rpm))
         self._spool_vel_buf.append(float(spool_velocity_buffer))
 
@@ -203,6 +209,7 @@ class RealTimePlotter:
         self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
         self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
         self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
+        self._ln_cmd_vx.set_data(t, np.asarray(self._cmd_vx, dtype=np.float32))
         self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_rpm, dtype=np.float32))
         self._ln_spool_vel.set_data(t, np.asarray(self._spool_vel_buf, dtype=np.float32))
 
@@ -638,12 +645,10 @@ class Controller:
             
 
         # Spool speed command from reference/actual tension alignment.
-        # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
-        # Paper-style: feedforward uses IMU speed (already read above).
-        # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
+        # Feedforward uses cmd vx at startup, then blends IMU vx with cmd vx.
         spool_speed_rpm,feedback_rpm, rff_rpm = self.tension_speed_controller.step(
-            speed_input=float(cmd[0]),
-            #speed_input=float(linvel[0]),
+            cmd_speed_input=float(cmd[0]*0.8),
+            imu_speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
@@ -658,7 +663,8 @@ class Controller:
                 tension_value=float(tension_value),
                 target_tension=float(target_tension),
                 yaw_differ_value=float(yaw_differ_value),
-                imu_vx=float(cmd[0]),
+                imu_vx=float(linvel[0]),
+                cmd_vx=float(cmd[0]*0.8),
                 spool_speed_rpm=float(spool_speed_rpm),
                 spool_velocity_buffer=float(spool_rpm),
             )

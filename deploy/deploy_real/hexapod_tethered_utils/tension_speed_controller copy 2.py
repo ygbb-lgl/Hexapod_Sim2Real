@@ -10,15 +10,15 @@ def _clip(value: float, low: float, high: float) -> float:
 
 
 @dataclass(frozen=True)
-class TensionTorqueControllerConfig:
-    """Configuration for reference-tension tracking via spool torque.
+class TensionSpeedControllerConfig:
+    """Configuration for reference-tension tracking via spool speed.
 
-    All gains are expressed in *Nm per unit* so that the output can be written
-    directly to `robot.spool_command_buffer.target_torque_nm[0]`.
+    All gains are expressed in *RPM per unit* so that the output can be written
+    directly to `robot.spool_command_buffer.target_speed_rpm[0]`.
 
     Conceptual law (paper-style P + feedforward):
         e = T_ref - T_meas
-        torque_nm = speed_sign * (ff(v, yaw) + kp(v, yaw) * e)
+        speed_rpm = speed_sign * (ff(v, yaw) + kp(v, yaw) * e)
 
     Notes:
     - Units of `v`, `T_ref`, `T_meas` are user-defined; keep them consistent with gains.
@@ -45,26 +45,27 @@ class TensionTorqueControllerConfig:
     # Feedforward (paper-style):
     #   ff_rpm = (ff_max_rpm / ff_max_speed_mps) * (v_mps * cos(yaw)) / ff_radius_m
     ff_enabled: bool = False
+    ff_max_rpm: float = 157.0
+    ff_max_speed_mps: float = 0.8
     ff_radius_m: float = 0.07
 
     # Robustness / safety
+    speed_limit_rpm: float = 157.0
+    speed_deadband_rpm: float = 0.1
     tension_deadband: float = 0.0
 
-    torque_limit: float = 90.0  # Nm, saturation limit for output torque command
-    torque_deadband: float = 0.0  # Nm, deadband for output torque command
-    speed_sign_torque_compensation_nm: float = 1.5  # Nm, + when speed > 0, - when speed < 0
     # Filtering and integrator clamping
     tension_lpf_alpha: float = 1.0
     Kff_forward: float = 0.0  # Feedforward scaling factor (paper-style), unitless multiplier on ff_rpm
     Kff_backward: float = 0.0  # Feedforward scaling factor (paper-style), unitless multiplier on ff_rpm
 
-class TensionTorqueController:
-    """Lightweight tension->torque controller.
+class TensionSpeedController:
+    """Lightweight tension->speed controller.
 
     This class does *not* access any sensors; pass the needed scalars in.
     """
 
-    def __init__(self, cfg: TensionTorqueControllerConfig):
+    def __init__(self, cfg: TensionSpeedControllerConfig):
         self.cfg = cfg
         self._prev_e: Optional[float] = None
         self._tension_meas_f: Optional[float] = None
@@ -85,7 +86,7 @@ class TensionTorqueController:
         tension_ref: float,
         tension_meas: float,
     ) -> float:
-        """Compute spool target torque in Nm.
+        """Compute spool target speed in RPM.
 
         Args:
             speed_input: A velocity-like scalar used for feedforward (e.g., cmd vx).
@@ -93,7 +94,7 @@ class TensionTorqueController:
             tension_meas: Measured/actual cable tension.
 
         Returns:
-            target_torque_nm (float)
+            target_speed_rpm (float)
         """
         
         # Clamp/filter tension measurement for stability.
@@ -112,10 +113,6 @@ class TensionTorqueController:
 
         # Optional deadband on tension error.
         if abs(e) < float(self.cfg.tension_deadband):
-            e = 0.0
-        # Large error protection: when error exceeds 70 N, treat as unreliable
-        # measurement and zero out error to prevent dangerous torque commands.
-        if abs(e) > 70.0:
             e = 0.0
 
         self._prev_e = e
@@ -148,50 +145,46 @@ class TensionTorqueController:
         p_term = kp * e
         d_term = kd * derivative
         i_term = ki * int_candidate
-        error = e
         self._last_error = e
 
         Kff_forward = float(self.cfg.Kff_forward)
         Kff_backward = float(self.cfg.Kff_backward)
-
         # 决定是否启用 前馈
         if bool(self.cfg.ff_enabled):
+            rad_rpm = (60 / (2 * math.pi))
             if v_proj >= 0.0 :
-                ff_torque_nm = (
+                ff_rpm = (
                     Kff_forward
-                    * tension_ref
-                    * float(self.cfg.ff_radius_m)
+                    *rad_rpm
+                    * v_proj
+                    / float(self.cfg.ff_radius_m)
                 )
             else:
-                ff_torque_nm = (
+                ff_rpm = (
                     Kff_backward
-                    * tension_ref
-                    * float(self.cfg.ff_radius_m)
+                    *rad_rpm
+                    * v_proj
+                    / float(self.cfg.ff_radius_m)
                 )                    
         else:
-            ff_torque_nm = 0.0
+            ff_rpm = 0.0
 
-        feedback_torque_nm = (p_term + d_term + i_term) * float(self.cfg.ff_radius_m)
-        torque_nm_unsat = ff_torque_nm + feedback_torque_nm
+        feedback_rpm = p_term + d_term + i_term
+        speed_rpm_unsat = ff_rpm + feedback_rpm
 
         # Apply sign convention before deadband/saturation.
-        torque_cmd = torque_nm_unsat * float(self.cfg.speed_sign)
-        speed_compensation_nm = float(self.cfg.speed_sign_torque_compensation_nm)
-        if v_proj > 0.0:
-            torque_cmd += speed_compensation_nm
-        elif v_proj < 0.0:
-            torque_cmd -= speed_compensation_nm
+        speed_rpm = speed_rpm_unsat * float(self.cfg.speed_sign)
 
         # Deadband + saturation
-        if abs(torque_cmd) < float(self.cfg.torque_deadband):
-            torque_cmd = 0.0
+        if abs(speed_rpm) < float(self.cfg.speed_deadband_rpm):
+            speed_rpm = 0.0
 
-        lim = abs(float(self.cfg.torque_limit))
-        torque_cmd_sat = _clip(torque_cmd, -lim, lim)
+        lim = abs(float(self.cfg.speed_limit_rpm))
+        speed_rpm_sat = _clip(speed_rpm, -lim, lim)
 
         # If saturating, reject integral update (prevents windup).
-        if abs(torque_cmd_sat - torque_cmd) <= 1e-9:
+        if abs(speed_rpm_sat - speed_rpm) <= 1e-9:
             self._int_error = int_candidate
-        torque_cmd = torque_cmd_sat
+        speed_rpm = speed_rpm_sat
         #return speed_rpm
-        return torque_cmd,feedback_torque_nm, ff_torque_nm,error
+        return speed_rpm,feedback_rpm, ff_rpm
