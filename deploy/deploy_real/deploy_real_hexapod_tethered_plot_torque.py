@@ -258,7 +258,7 @@ class Controller:
 
         # Create log directory with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.log_dir = os.path.join(os.getcwd(), f'motor_logs_{timestamp}')
+        self.log_dir = os.path.join(os.getcwd(), "motor_logs", f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
 
         # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
