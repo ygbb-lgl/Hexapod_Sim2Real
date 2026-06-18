@@ -298,6 +298,8 @@ def main() -> int:
 			"imu_vx",
 			"spool_cmd_rpm",
 			"spool_vel_rpm",
+			"feedback_rpm",
+			"rff_rpm",
 			"spool_pos_rad",
 			"yaw_raw_deg",
 		]
@@ -441,12 +443,12 @@ def main() -> int:
 
 			# Safety: if no valid tension measurement, hold 0 rpm
 			if state.armed and (tension_meas is not None):
-				spool_cmd_rpm,feedback_rpm, rff_rpm= tsc.step(
-					speed_input=float(0),
-					#t=time.time(),
-					#speed_input=float(imu_vx),
-					yaw=float(yaw_differ_rad),
-					#yaw=float(0),
+				spool_cmd_rpm, feedback_rpm, rff_rpm = tsc.step(
+					cmd_speed_input=0.0,
+					#imu_speed_input=float(imu_vx),					
+					imu_speed_input=0.0,
+					yaw=0.0,
+					#yaw=float(yaw_differ_rad),
 					tension_ref=float(tension_ref),
 					tension_meas=float(tension_meas),
 				)
@@ -470,6 +472,8 @@ def main() -> int:
 					float(imu_vx),
 					float(spool_cmd_rpm),
 					float(spool_vel_rpm),
+					float(feedback_rpm),
+					float(rff_rpm),
 					float(spool_pos_rad),
 					_safe_float(yaw_raw_deg, float("nan")),
 				]
@@ -508,4 +512,3 @@ def main() -> int:
 
 if __name__ == "__main__":
 	raise SystemExit(main())
-
