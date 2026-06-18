@@ -1,0 +1,143 @@
+# 
+control_dt: 0.02
+
+ang_vel_scale: 1.0
+dof_pos_scale: 1.0
+dof_vel_scale: 1.0
+lin_vel_scale: 1.0
+
+
+policy_path: "{ROOT_DIR}/deploy/pre_train/hexapod_tethered/policy_10000.pt"
+
+joint2motor_idx: [13, 18, 17,
+                  7, 9, 8, 
+                  1, 3, 2, 
+                  16, 15, 14, 
+                  10, 11, 12, 
+                  4, 6, 5]
+
+# motor的方向是因为电机安装的方式不同，导致正转和反转的方向不同，所以需要乘以一个系数来调整。1表示正转，-1表示反转。
+# xml有一些反向的电机，所以需要乘以-1来调整。
+motor_directions: [1, 1, -1, 
+                   1, -1, 1,
+                   1, -1, -1, 
+                  1, 1, -1,
+                  1, -1, 1, 
+                  1, -1, -1]
+
+# motor_directions: [1, -1, 1, 
+#                    1, 1, -1,
+#                    1, 1, -1, 
+#                   -1, 1, -1,
+#                   -1, -1, 1, 
+#                   -1, -1, 1]
+
+
+
+motor_offsets: [3.100, 1.7404823303222656, -1.0099563598632812,
+                -2.577439308166504, -1.2491416931152344, 0.7631416320800781,
+                -2.479400634765625, -0.3465709686279297, -0.6063556671142578,
+                -0.502593994140625, 1.5177001953125, 2.908942222595215,
+                1.3223848342895508, -0.3568706512451172, -1.812962532043457,
+                2.141031265258789, -3.0004959106445312, 0.9515905380249023]
+
+default_angles: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# 18 个腿部关节的顺序（action 索引 -> joint name）：
+#   0 : RF_HAA
+#   1 : RF_HFE
+#   2 : RF_KFE
+#   3 : RM_HAA
+#   4 : RM_HFE
+#   5 : RM_KFE
+#   6 : RB_HAA
+#   7 : RB_HFE
+#   8 : RB_KFE
+#   9 : LF_HAA
+#  10 : LF_HFE
+#  11 : LF_KFE
+#  12 : LM_HAA
+#  13 : LM_HFE
+#  14 : LM_KFE
+#  15 : LB_HAA
+#  16 : LB_HFE
+#  17 : LB_KFE
+#  18 : cable (tendon actuator)
+
+
+command_scale: [0.8, 0.5, 0.5]
+
+action_scale: 0.25
+tension_action_scale: 200
+
+
+num_leggeds_actions: 18
+num_actions: 19
+num_obs: 70
+
+#offset_deg: -1.0485
+offset_deg: -2.2275
+#offset_deg: -1.9903
+#offset_deg: 3.3865
+# Optional: reference tension -> spool speed controller
+# Output unit is RPM and will be written into `robot.spool_command_buffer.target_speed_rpm[0]`.
+# Control law (conceptually):
+#   speed_rpm = sign * (k_ff_vel*v + k_ff_tension*T_ref + k_p*(T_ref-T_meas))
+speed_sign: 1.0
+speed_limit_rpm: 157.0
+
+# Feedback: paper-style asymmetric Kp (forward/backward)
+# If you only want one Kp, you can set k_p_tension_rpm_per_unit and omit the two fields below.
+k_p_forward_rpm_per_unit: 0.11
+k_p_backward_rpm_per_unit: 0.11
+
+k_d_forward_rpm_per_unit: 0.00
+k_d_backward_rpm_per_unit: 0.00
+
+k_i_forward_rpm_per_unit: 0.000
+#k_i_forward_rpm_per_unit: 0.001
+k_i_backward_rpm_per_unit: 0.00
+# k_p_forward_rpm_per_unit: 0.0
+# k_p_backward_rpm_per_unit: 0.0
+# k_d_forward_rpm_per_unit: 0.0
+# k_d backward_rpm_per_unit: 0.0
+# Backward compatible single-Kp option:
+# k_p_tension_rpm_per_unit: 0.2
+
+# Feedforward from IMU speed (disabled by default for safety)
+# ff_rpm = (ff_max_rpm/ff_max_speed_mps*60/2pi) * (v_mps*cos(yaw)) / ff_radius_m
+ff_enabled: True
+ff_max_rpm: 157.0
+ff_max_speed_mps: 1.0
+ff_radius_m: 0.07
+
+Kff_forward: 0.45
+Kff_backward: 0.8
+
+# 拉力死区
+# tension_deadband: 17.0
+tension_deadband: 10.0
+
+speed_deadband_rpm: 0.03
+tension_lpf_alpha: 1.0
+
+
+# ---------- torque control parameters -----------
+
+
+# 0.4
+k_p_forward_rpm_per_unit_torque: 0.3
+k_p_backward_rpm_per_unit_torque: 0.00
+
+k_d_forward_rpm_per_unit_torque: 0.00000
+k_d_backward_rpm_per_unit_torque: 0.00
+
+#0.2
+k_i_forward_rpm_per_unit_torque: 0.0
+k_i_backward_rpm_per_unit_torque: 0.00
+
+Kff_forward_torque: 1.0
+Kff_backward_torque: 1.0
+
+torque_limit: 90.0
+torque_deadband: 0.07

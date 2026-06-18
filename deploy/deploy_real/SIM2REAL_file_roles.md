@@ -1,0 +1,297 @@
+# Sim2Real：common 与 unitree_sdk2py 文件作用索引
+
+本文件由脚本自动生成：用于把“文件名”与其在 sim2real/真实机部署链路中的职责对应起来。
+
+说明：unitree_sdk2py 里有大量 IDL 自动生成文件，这里会按统一规则描述其用途。
+
+## deploy/deploy_real/common
+
+- `deploy/deploy_real/common/__pycache__/command_helper.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/common/__pycache__/remote_controller.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/common/__pycache__/rotation_helper.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/common/command_helper.py`: 生成 LowCmd 的常用“安全姿态”命令：零力矩/阻尼/初始化等，供真实机启动/退出时使用。
+- `deploy/deploy_real/common/remote_controller.py`: 解析 Unitree 无线遥控器原始字节流到按键/摇杆值，用于状态机启动/急停/退出触发。
+- `deploy/deploy_real/common/rotation_helper.py`: IMU 四元数→重力方向/坐标变换工具，用于把真实机姿态变成策略观测量。
+
+## deploy/deploy_real/unitree_sdk2py
+
+- `deploy/deploy_real/unitree_sdk2py/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/b2/back_video/back_video_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/b2/back_video/back_video_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/b2/front_video/front_video_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/b2/front_video/front_video_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/b2/robot_state/robot_state_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/b2/robot_state/robot_state_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/b2/sport/sport_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/b2/sport/sport_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/b2/vui/vui_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/b2/vui/vui_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/comm/motion_switcher/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/comm/motion_switcher/motion_switcher_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/comm/motion_switcher/motion_switcher_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/core/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/core/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/core/__pycache__/channel.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/core/__pycache__/channel_config.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/core/channel.py`: DDS 通信抽象层：封装 CycloneDDS Topic/DataReader/DataWriter；提供 ChannelFactory/Publisher/Subscriber 给 sim2real 读写 LowState/LowCmd。
+- `deploy/deploy_real/unitree_sdk2py/core/channel_config.py`: CycloneDDS XML 配置模板：指定网卡或自动选择网卡，供 ChannelFactory.Init 使用。
+- `deploy/deploy_real/unitree_sdk2py/core/channel_name.py`: RPC 通道命名规则：把 serviceName 映射到 request/response 的 DDS topic 名称。
+- `deploy/deploy_real/unitree_sdk2py/g1/arm/g1_arm_action_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/g1/arm/g1_arm_action_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/g1/audio/g1_audio_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/g1/audio/g1_audio_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/g1/loco/g1_loco_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/g1/loco/g1_loco_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/go2/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/go2/obstacles_avoid/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/obstacles_avoid/obstacles_avoid_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/go2/obstacles_avoid/obstacles_avoid_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/go2/robot_state/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/robot_state/robot_state_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/go2/robot_state/robot_state_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/go2/sport/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/sport/sport_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/go2/sport/sport_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/go2/video/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/video/video_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/go2/video/video_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/go2/vui/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/go2/vui/vui_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/go2/vui/vui_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/h1/loco/h1_loco_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/h1/loco/h1_loco_client.py`: 服务客户端封装：基于 rpc.Client，把高层方法（JSON 参数/二进制参数）映射到具体 apiId。
+- `deploy/deploy_real/unitree_sdk2py/idl/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/__pycache__/default.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/dds_/_Time_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/dds_/__pycache__/_Time_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/builtin_interfaces/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/default.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Point32_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_PointStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Point_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Pose2D_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_PoseStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_PoseWithCovarianceStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_PoseWithCovariance_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Pose_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_QuaternionStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Quaternion_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_TwistStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_TwistWithCovarianceStamped_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_TwistWithCovariance_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Twist_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/_Vector3_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Point32_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_PointStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Point_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Pose2D_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_PoseStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_PoseWithCovarianceStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_PoseWithCovariance_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Pose_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_QuaternionStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Quaternion_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_TwistStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_TwistWithCovarianceStamped_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_TwistWithCovariance_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Twist_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/_Vector3_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/geometry_msgs/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/_MapMetaData_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/_OccupancyGrid_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/_Odometry_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/__pycache__/_MapMetaData_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/__pycache__/_OccupancyGrid_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/__pycache__/_Odometry_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/nav_msgs/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/PointField_Constants/_PointField_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/PointField_Constants/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/PointField_Constants/__pycache__/_PointField_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/PointField_Constants/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/_PointCloud2_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/_PointField_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/__pycache__/_PointCloud2_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/__pycache__/_PointField_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/sensor_msgs/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/_Header_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/_String_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/__pycache__/_Header_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/__pycache__/_String_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/std_msgs/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_RequestHeader_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_RequestIdentity_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_RequestLease_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_RequestPolicy_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_Request_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_ResponseHeader_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_ResponseStatus_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/_Response_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_RequestHeader_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_RequestIdentity_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_RequestLease_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_RequestPolicy_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_Request_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_ResponseHeader_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_ResponseStatus_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/_Response_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_api/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_AudioData_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_BmsCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_BmsState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_Error_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_Go2FrontVideoData_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_HeightMap_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_IMUState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_InterfaceConfig_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_LidarState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_LowCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_LowState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_MotorCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_MotorCmds_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_MotorState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_MotorStates_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_PathPoint_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_Req_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_Res_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_SportModeState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_TimeSpec_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_UwbState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_UwbSwitch_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/_WirelessController_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_AudioData_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_BmsCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_BmsState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_Error_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_Go2FrontVideoData_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_HeightMap_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_IMUState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_InterfaceConfig_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_LidarState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_LowCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_LowState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_MotorCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_MotorCmds_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_MotorState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_MotorStates_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_PathPoint_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_Req_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_Res_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_SportModeState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_TimeSpec_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_UwbState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_UwbSwitch_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/_WirelessController_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_go/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/.idlpy_manifest`: 资源文件/其他：运行时依赖或构建产物。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/.idlpy_manifest`: 资源文件/其他：运行时依赖或构建产物。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/.idlpy_manifest`: 资源文件/其他：运行时依赖或构建产物。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_BmsCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_BmsState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_HandCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_HandState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_IMUState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_LowCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_LowState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_MainBoardState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_MotorCmd_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_MotorState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/_PressSensorState_.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_BmsCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_BmsState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_HandCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_HandState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_IMUState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_LowCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_LowState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_MainBoardState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_MotorCmd_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_MotorState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/_PressSensorState_.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/idl/unitree_hg/msg/dds_/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/rpc/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/rpc/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/rpc/client.py`: RPC 高层 Client：在 ClientBase 上增加“API 注册/优先级/leaseId 注入”的检查逻辑。
+- `deploy/deploy_real/unitree_sdk2py/rpc/client_base.py`: RPC 客户端底座：把 apiId+JSON/二进制参数封装成 Request_ 并等待 Response_（Future+超时）。
+- `deploy/deploy_real/unitree_sdk2py/rpc/client_stub.py`: RPC 客户端桩：建立 DDS request/response 通道；发送请求并用 RequestFutureQueue 分发响应。
+- `deploy/deploy_real/unitree_sdk2py/rpc/internal.py`: RPC 内部常量：内部 API id、租约(lease) API id、错误码定义。
+- `deploy/deploy_real/unitree_sdk2py/rpc/lease_client.py`: 租约(lease)客户端：向机器人申请/续租控制权 leaseId，供需要独占控制的高层服务使用。
+- `deploy/deploy_real/unitree_sdk2py/rpc/lease_server.py`: 租约(lease)服务端：维护 lease 状态并检查请求 leaseId 是否有效（服务端侧）。
+- `deploy/deploy_real/unitree_sdk2py/rpc/request_future.py`: RPC 请求 Future 与队列：按 requestId 保存/取回 Future，实现异步等待响应。
+- `deploy/deploy_real/unitree_sdk2py/rpc/server.py`: RPC 服务端实现：注册各 apiId 处理函数；处理 lease 校验、内部 apiVersion 查询，并回包 Response_。
+- `deploy/deploy_real/unitree_sdk2py/rpc/server_base.py`: RPC 服务端基类：管理 ServerStub 启动与 Response 发送。
+- `deploy/deploy_real/unitree_sdk2py/rpc/server_stub.py`: RPC 服务端桩：建立 DDS request/response 通道；把请求入队并在后台线程回调到服务处理函数（可选优先级队列）。
+- `deploy/deploy_real/unitree_sdk2py/test/client/obstacles_avoid_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/client/robot_service_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/client/sport_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/client/video_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/client/vui_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/crc/test_crc.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/helloworld/helloworld.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/helloworld/publisher.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/helloworld/subscriber.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/lowlevel/lowlevel_control.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/lowlevel/read_lowstate.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/lowlevel/sub_lowstate.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/lowlevel/unitree_go2_const.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/rpc/test_api.py`: 服务 API 常量定义：service 名称、API 版本、apiId/错误码等（供对应 *_client.py 注册和调用）。
+- `deploy/deploy_real/unitree_sdk2py/test/rpc/test_client_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/test/rpc/test_server_example.py`: Python 源码文件：该子模块的实现（命名可推断其对应的机器人服务或工具）。
+- `deploy/deploy_real/unitree_sdk2py/utils/__init__.py`: Python 包初始化文件：声明包结构/导出子模块，便于上层 import。
+- `deploy/deploy_real/unitree_sdk2py/utils/__pycache__/__init__.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/utils/__pycache__/bqueue.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/utils/__pycache__/crc.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/utils/__pycache__/singleton.cpython-38.pyc`: Python 字节码缓存（运行时生成），不参与 sim2real 源码逻辑。
+- `deploy/deploy_real/unitree_sdk2py/utils/bqueue.py`: 有界队列(BQueue)：Reader/ServerStub 等后台线程的缓冲队列，支持替换旧数据。
+- `deploy/deploy_real/unitree_sdk2py/utils/clib_lookup.py`: 本地库查找工具：定位/加载 utils/lib 下的 .so（如 CRC）。
+- `deploy/deploy_real/unitree_sdk2py/utils/crc.py`: 低层通信 CRC32：对 LowCmd/LowState 按协议打包并计算 crc 字段（真实机 LowCmd 发送前必须填）。
+- `deploy/deploy_real/unitree_sdk2py/utils/future.py`: 通用 Future 实现：线程条件变量等待 Ready/Fail，用于 RPC 请求-响应。
+- `deploy/deploy_real/unitree_sdk2py/utils/hz_sample.py`: 频率统计工具：测量循环 Hz/延迟，便于调试通信与控制频率。
+- `deploy/deploy_real/unitree_sdk2py/utils/joystick.py`: 手柄/摇杆工具：读取/转换 joystick 输入（多用于示例或遥控）。
+- `deploy/deploy_real/unitree_sdk2py/utils/lib/crc_aarch64.so`: 本地动态库：提供 CRC32 加速实现（Linux x86_64/aarch64），被 utils/crc.py ctypes 调用。
+- `deploy/deploy_real/unitree_sdk2py/utils/lib/crc_amd64.so`: 本地动态库：提供 CRC32 加速实现（Linux x86_64/aarch64），被 utils/crc.py ctypes 调用。
+- `deploy/deploy_real/unitree_sdk2py/utils/singleton.py`: Singleton 基类：ChannelFactory/CRC 等需要单例的组件使用。
+- `deploy/deploy_real/unitree_sdk2py/utils/thread.py`: 线程相关小工具：封装/辅助线程操作（被通道或采样工具使用）。
+- `deploy/deploy_real/unitree_sdk2py/utils/timerfd.py`: Linux 定时器封装：用 timerfd/epoll 风格实现稳定周期触发（用于控制循环/采样）。

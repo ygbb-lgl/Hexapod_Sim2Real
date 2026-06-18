@@ -1,0 +1,52 @@
+# 
+control_dt: 0.02
+
+ang_vel_scale: 0.25
+dof_pos_scale: 1.0
+dof_vel_scale: 0.05
+lin_vel_scale: 2.0
+
+
+policy_path: "{ROOT_DIR}/deploy/pre_train/hexapod/policy_4000.pt"
+
+joint2motor_idx: [13, 18, 17, 7, 9, 8, 1, 3, 2, 16, 15, 14, 10, 11, 12, 4, 6, 5]
+
+motor_directions: [1, -1, 1, 1, 1, -1, 1, 1, -1, -1, 1, -1, -1, -1, 1, -1, -1, 1]
+
+motor_offsets: [3.100, 1.7404823303222656, -1.0099563598632812,
+                -2.577439308166504, -1.2491416931152344, 0.7631416320800781,
+                -2.479400634765625, -0.3465709686279297, -0.6063556671142578,
+                -0.502593994140625, 1.5177001953125, 2.908942222595215,
+                1.3223848342895508, -0.3568706512451172, -1.812962532043457,
+                2.141031265258789, -3.0004959106445312, 0.9515905380249023]
+
+default_angles: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+# 18 个腿部关节的顺序（action 索引 -> joint name）：
+#   0 : RF_HAA
+#   1 : RF_HFE
+#   2 : RF_KFE
+#   3 : RM_HAA
+#   4 : RM_HFE
+#   5 : RM_KFE
+#   6 : RB_HAA
+#   7 : RB_HFE
+#   8 : RB_KFE
+#   9 : LF_HAA
+#  10 : LF_HFE
+#  11 : LF_KFE
+#  12 : LM_HAA
+#  13 : LM_HFE
+#  14 : LM_KFE
+#  15 : LB_HAA
+#  16 : LB_HFE
+#  17 : LB_KFE
+#  18 : cable (tendon actuator)
+
+
+command_scale: [0.8, 0.5, 0.5]
+
+action_scale: 0.25
+
+num_actions: 18
+num_obs: 66
