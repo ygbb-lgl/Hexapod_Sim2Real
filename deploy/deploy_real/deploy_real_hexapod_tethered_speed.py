@@ -601,6 +601,8 @@ class Controller:
         
         target_tension = self.action[18] * self.config.tension_action_scale
 
+        target_tension = target_tension + 40
+
         for i in range(18):
             q = target_dof_pos[i]
             #motor_id = int(self.config.joint2motor_idx[i])

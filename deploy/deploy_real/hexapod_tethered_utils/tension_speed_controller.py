@@ -134,7 +134,7 @@ class TensionSpeedController:
 
         cmd_vx = float(cmd_speed_input)
         imu_vx = float(imu_speed_input)
-        if abs(imu_vx) < 0.1:
+        if abs(imu_vx) < 0.1 or imu_vx * cmd_vx < 0.0:
             v_mps = cmd_vx
         else:
             v_mps = 0.9 * imu_vx + 0.1 * cmd_vx
@@ -186,7 +186,17 @@ class TensionSpeedController:
         else:
             ff_rpm = 0.0
 
-        feedback_rpm = p_term + d_term + i_term
+        # When the robot is moving and measured tension is too high, add a
+        # small payout speed. It grows linearly from -0.5 RPM at 50 N excess
+        # tension to -3 RPM at 300 N excess tension.
+        tension_relief_rpm = 0.0
+        over_tension = float(self._tension_meas_f) - tension_ref
+
+        # 到时候调这个肯定能整出来
+        if abs(cmd_vx) > 0.01 and over_tension >= 40.0:
+            tension_relief_rpm = -_clip(over_tension / 40.0, 0.0, 10.0)
+
+        feedback_rpm = p_term + d_term + i_term + tension_relief_rpm
         speed_rpm_unsat = ff_rpm + feedback_rpm
 
         # Apply sign convention before deadband/saturation.
