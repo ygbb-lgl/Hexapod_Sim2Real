@@ -88,8 +88,8 @@ speed_limit_rpm: 157.0
 
 # Feedback: paper-style asymmetric Kp (forward/backward)
 # If you only want one Kp, you can set k_p_tension_rpm_per_unit and omit the two fields below.
-k_p_forward_rpm_per_unit: 0.11
-k_p_backward_rpm_per_unit: 0.11
+k_p_forward_rpm_per_unit: 0.08
+k_p_backward_rpm_per_unit: 0.08
 
 k_d_forward_rpm_per_unit: 0.00
 k_d_backward_rpm_per_unit: 0.00
@@ -109,10 +109,10 @@ k_i_backward_rpm_per_unit: 0.00
 ff_enabled: True
 ff_max_rpm: 157.0
 ff_max_speed_mps: 1.0
-ff_radius_m: 0.07
+ff_radius_m: 0.073
 
-Kff_forward: 0.45
-Kff_backward: 0.8
+Kff_forward: 1.0
+Kff_backward: 0.9
 
 # 拉力死区
 # tension_deadband: 17.0

@@ -81,7 +81,9 @@ class TensionSpeedController:
     def step(
         self,
         *,
-        speed_input: float,
+        cmd_speed_input: Optional[float] = None,
+        imu_speed_input: Optional[float] = None,
+        speed_input: Optional[float] = None,
         yaw: float = 0.0,
         tension_ref: float,
         tension_meas: float,
@@ -89,7 +91,10 @@ class TensionSpeedController:
         """Compute spool target speed in RPM.
 
         Args:
-            speed_input: A velocity-like scalar used for feedforward (e.g., cmd vx).
+            cmd_speed_input: Commanded forward speed used for low-speed feedforward.
+            imu_speed_input: IMU-measured forward speed used after startup.
+            speed_input: Backward-compatible velocity input. Used as command speed
+                if cmd_speed_input is not provided.
             tension_ref: Reference/desired cable tension (e.g., from policy output).
             tension_meas: Measured/actual cable tension.
 
@@ -120,7 +125,19 @@ class TensionSpeedController:
         # Compose speed command
         yaw_rad = float(yaw)
 
-        v_mps = float(speed_input)
+        if cmd_speed_input is None:
+            if speed_input is None:
+                raise ValueError("cmd_speed_input or speed_input must be provided")
+            cmd_speed_input = speed_input
+        if imu_speed_input is None:
+            imu_speed_input = cmd_speed_input
+
+        cmd_vx = float(cmd_speed_input)
+        imu_vx = float(imu_speed_input)
+        if abs(imu_vx) < 0.1:
+            v_mps = cmd_vx
+        else:
+            v_mps = 0.9 * imu_vx + 0.1 * cmd_vx
         v_proj = v_mps * math.cos(yaw_rad)
 
         # Select Kp&Kd based on forward/backward projected motion.
@@ -169,7 +186,15 @@ class TensionSpeedController:
         else:
             ff_rpm = 0.0
 
-        feedback_rpm = p_term + d_term + i_term
+        # When the robot is moving and measured tension is too high, add a
+        # small payout speed. It grows linearly from -0.5 RPM at 50 N excess
+        # tension to -3 RPM at 300 N excess tension.
+        tension_relief_rpm = 0.0
+        over_tension = float(self._tension_meas_f) - tension_ref
+        if abs(cmd_vx) > 1e-6 and over_tension >= 50.0:
+            tension_relief_rpm = -_clip(over_tension / 50.0, 1.0, 6.0)
+
+        feedback_rpm = p_term + d_term + i_term + tension_relief_rpm
         speed_rpm_unsat = ff_rpm + feedback_rpm
 
         # Apply sign convention before deadband/saturation.
