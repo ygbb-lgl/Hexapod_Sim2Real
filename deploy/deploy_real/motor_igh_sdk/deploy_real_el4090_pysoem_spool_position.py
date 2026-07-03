@@ -51,6 +51,9 @@ class RL_Real_PySOEM_WithSpoolPosition(RL_Real_PySOEM):
         self.spool_command_buffer.speed_limit_01rpm = [50]
         self.spool_command_buffer.current_limit_01a = [500]
         self.spool_command_buffer.ack_status = [2]
+        # Keep false by default so constructing/starting this wrapper does not
+        # immediately move motor 19 to the default 0 deg command.
+        self.spool_command_buffer.command_enabled = [False]
 
         self.spool_state_buffer = type("SpoolStateBuffer", (), {})()
         self.spool_state_buffer.position = [0.0]
@@ -78,6 +81,9 @@ class RL_Real_PySOEM_WithSpoolPosition(RL_Real_PySOEM):
 
         # 2) Send spool position command on slave 3 / passage 1
         if not self._spool_enabled:
+            return
+
+        if not bool(self.spool_command_buffer.command_enabled[0]):
             return
 
         if self.spool_slave_idx >= len(self.master.slaves):
@@ -162,6 +168,7 @@ if __name__ == "__main__":
         robot.spool_command_buffer.speed_limit_01rpm[0] = speed_limit_01rpm
         robot.spool_command_buffer.current_limit_01a[0] = current_limit_01a
         robot.spool_command_buffer.ack_status[0] = 2
+        robot.spool_command_buffer.command_enabled[0] = True
 
         if not robot.start():
             print("Failed to start EtherCAT.")
