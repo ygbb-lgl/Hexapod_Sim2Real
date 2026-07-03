@@ -115,8 +115,8 @@ class TensionTorqueController:
             e = 0.0
         # Large error protection: when error exceeds 70 N, treat as unreliable
         # measurement and zero out error to prevent dangerous torque commands.
-        if abs(e) > 70.0:
-            e = 0.0
+        # if abs(e) > 70.0:
+        #     e = 0.0
 
         self._prev_e = e
 
