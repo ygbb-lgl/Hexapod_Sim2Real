@@ -259,6 +259,22 @@ def set_motor_position(msg, passage, motor_id, pos_deg, spd_01rpm=50, cur_01a=50
     motor_slot.data[7] = (((cur_01a & 0x3F) << 2) | int(ack_status)) & 0xFF
 
 
+def get_motor_parameter(msg, passage, motor_id, param_cmd):
+    """Query motor parameter (official C: get_motor_parameter).
+
+    param_cmd: 1=position, 2=speed, 3=current, 4=power, etc.
+    """
+    idx = passage - 1
+    motor_slot = msg.motor[idx]
+
+    msg.can_ide = 0
+    motor_slot.rtr = 0
+    motor_slot.id = int(motor_id)
+    motor_slot.dlc = 2
+    motor_slot.data[0] = 0xE0
+    motor_slot.data[1] = int(param_cmd) & 0xFF
+
+
 def set_motor_cur_tor(msg, passage, motor_id, cur_tor_001, ctrl_status=1, ack_status=1):
     """Servo current/torque/brake control (official C: set_motor_cur_tor).
 
@@ -350,6 +366,24 @@ def handle_response_mode(motor_data, motor_msg, ack_status):
         motor_msg.current_actual_int = (motor_data.data[5] << 8) | motor_data.data[6]
         motor_msg.temperature = int((motor_data.data[7] - 50) / 2)
         motor_msg.current_actual_float = float(motor_msg.current_actual_int) / 100.0
+
+    elif ack_status == 5:  # parameter query response
+        ins_code = int(motor_data.data[1])
+        if int(motor_data.dlc) == 6 and 1 <= ins_code <= 4:
+            value = _u8_to_float_le(
+                int(motor_data.data[5]),
+                int(motor_data.data[4]),
+                int(motor_data.data[3]),
+                int(motor_data.data[2]),
+            )
+            if ins_code == 1:
+                motor_msg.angle_actual_float = value
+            elif ins_code == 2:
+                motor_msg.speed_actual_float = value
+            elif ins_code == 3:
+                motor_msg.current_actual_float = value
+            elif ins_code == 4:
+                motor_msg.power = value
 
 
 def RV_can_data_repack(rx_msg, comm_mode, motor_msg_array, slave_idx, print_debug=False):

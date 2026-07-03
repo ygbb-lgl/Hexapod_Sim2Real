@@ -137,8 +137,8 @@ if __name__ == "__main__":
     #   python deploy_real_el4090_pysoem_spool_position.py <ifname> [target_deg] [speed_0.1rpm] [current_0.1A]
     ifname = sys.argv[1] if len(sys.argv) > 1 else "enp86s0"
     target_deg = float(sys.argv[2]) if len(sys.argv) > 2 else 0.0
-    speed_limit_01rpm = int(sys.argv[3]) if len(sys.argv) > 3 else 50
-    current_limit_01a = int(sys.argv[4]) if len(sys.argv) > 4 else 500
+    speed_limit_01rpm = int(sys.argv[3]) if len(sys.argv) > 3 else 10
+    current_limit_01a = int(sys.argv[4]) if len(sys.argv) > 4 else 60
 
     print(
         f"Launching RL_Real_PySOEM_WithSpoolPosition on {ifname} "
@@ -152,7 +152,7 @@ if __name__ == "__main__":
         # Keep joints in damping by default
         for i in range(robot.num_dofs):
             robot.motor_command_buffer.kp[i] = 0.0
-            robot.motor_command_buffer.kd[i] = 1.0
+            robot.motor_command_buffer.kd[i] = 0.0
             robot.motor_command_buffer.target_position[i] = 0.0
             robot.motor_command_buffer.target_velocity[i] = 0.0
             robot.motor_command_buffer.feedforward_torque[i] = 0.0

@@ -22,6 +22,7 @@ class RL_Real_Position_PySOEM:
     约定：
     - 单电机测试：slave3 / passage1 / motor_id=19
     - 位置命令以 policy index 对齐：`target_position_deg`
+    - `target_position_deg=None` 表示先查询当前位置，然后保持当前位置
     - 命令单位用官方位置模式的 degree；状态里的 position 仍保持 rad
     """
 
@@ -36,7 +37,7 @@ class RL_Real_Position_PySOEM:
         self.motor_ethercat_addr_ = {self.single_motor_id: {"slave": 3, "passage": 1}}
 
         self.motor_command_buffer = type("CommandBuffer", (), {})()
-        self.motor_command_buffer.target_position_deg = [0.0] * self.num_dofs
+        self.motor_command_buffer.target_position_deg = [None] * self.num_dofs
         self.motor_command_buffer.speed_limit_01rpm = [50] * self.num_dofs
         self.motor_command_buffer.current_limit_01a = [500] * self.num_dofs
         self.motor_command_buffer.ack_status = [2] * self.num_dofs
@@ -167,14 +168,20 @@ class RL_Real_Position_PySOEM:
             if slave_idx >= len(self.master.slaves):
                 continue
 
-            target_rad = math.radians(float(self.motor_command_buffer.target_position_deg[policy_idx]))
+            tx_msg = self.motorData.getTxMsg(slave_idx)
+            target_position_deg = self.motor_command_buffer.target_position_deg[policy_idx]
+            if target_position_deg is None:
+                get_motor_parameter(tx_msg, addr["passage"], motor_id, param_cmd=1)
+                self.motorData.setTxMsg(slave_idx, tx_msg)
+                continue
+
+            target_rad = math.radians(float(target_position_deg))
             motor_pos_rad = self.motor_direction_[motor_id] * target_rad + self.motor_offset_[motor_id]
             motor_pos_deg = math.degrees(motor_pos_rad)
             spd_01rpm = int(self.motor_command_buffer.speed_limit_01rpm[policy_idx])
             cur_01a = int(self.motor_command_buffer.current_limit_01a[policy_idx])
             ack = int(self.motor_command_buffer.ack_status[policy_idx])
 
-            tx_msg = self.motorData.getTxMsg(slave_idx)
             set_motor_position(
                 tx_msg,
                 addr["passage"],
@@ -209,6 +216,12 @@ class RL_Real_Position_PySOEM:
 
             urdf_angle = self.motor_direction_[motor_id] * (motor_pos - self.motor_offset_[motor_id])
             self.motor_state_buffer.position[policy_idx] = urdf_angle
+            if self.motor_command_buffer.target_position_deg[policy_idx] is None:
+                self.motor_command_buffer.target_position_deg[policy_idx] = math.degrees(urdf_angle)
+                print(
+                    f"Initialized hold position for motor_id={motor_id}: "
+                    f"{self.motor_command_buffer.target_position_deg[policy_idx]:.3f} deg"
+                )
 
             if ack == 3:
                 motor_vel = float(motor_msg.speed_actual_float) * 2.0 * math.pi / 60.0
@@ -280,14 +293,15 @@ if __name__ == "__main__":
         IFNAME = sys.argv[1]
 
     motor_id = int(sys.argv[2]) if len(sys.argv) > 2 else 19
-    const_position_deg = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
+    const_position_deg = float(sys.argv[3]) if len(sys.argv) > 3 else None
     speed_limit_01rpm = int(sys.argv[4]) if len(sys.argv) > 4 else 50
     current_limit_01a = int(sys.argv[5]) if len(sys.argv) > 5 else 500
     ack_status = int(sys.argv[6]) if len(sys.argv) > 6 else 2
 
+    target_desc = "hold-current" if const_position_deg is None else f"{const_position_deg:.3f} deg"
     print(
         f"Launching Position Mode on interface {IFNAME}, motor_id={motor_id}, "
-        f"target={const_position_deg:.3f} deg"
+        f"target={target_desc}"
     )
 
     robot = None
@@ -296,7 +310,7 @@ if __name__ == "__main__":
         idx = _find_policy_index_by_motor_id(robot, motor_id)
 
         for i in range(robot.num_dofs):
-            robot.motor_command_buffer.target_position_deg[i] = 0.0
+            robot.motor_command_buffer.target_position_deg[i] = const_position_deg
             robot.motor_command_buffer.speed_limit_01rpm[i] = speed_limit_01rpm
             robot.motor_command_buffer.current_limit_01a[i] = current_limit_01a
             robot.motor_command_buffer.ack_status[i] = ack_status
@@ -311,14 +325,17 @@ if __name__ == "__main__":
         while True:
             t = time.time() - t0
 
-            robot.motor_command_buffer.target_position_deg[idx] = const_position_deg
+            if const_position_deg is not None:
+                robot.motor_command_buffer.target_position_deg[idx] = const_position_deg
 
             if int(t * 10) % 10 == 0:
                 v = robot.motor_state_buffer.velocity[idx]
                 p = robot.motor_state_buffer.position[idx]
                 c = robot.motor_state_buffer.torque[idx]
+                cmd = robot.motor_command_buffer.target_position_deg[idx]
+                cmd_desc = "hold-init" if cmd is None else f"{float(cmd):8.3f}"
                 print(
-                    f"t={t:6.2f}s cmd_pos(deg)={const_position_deg:8.3f} "
+                    f"t={t:6.2f}s cmd_pos(deg)={cmd_desc} "
                     f"pos(rad)={p:8.3f} vel(rad/s)={v:8.3f} cur={c:8.3f}"
                 )
 
