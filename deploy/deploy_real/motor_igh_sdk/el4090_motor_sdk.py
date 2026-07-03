@@ -19,6 +19,8 @@ I_MAX = 60.0
 # Servo mode ranges (from official C SDK comments)
 SERVO_SPD_RPM_MIN = -18000.0
 SERVO_SPD_RPM_MAX = 18000.0
+SERVO_POS_SPD_01RPM_MIN = 0
+SERVO_POS_SPD_01RPM_MAX = 18000
 SERVO_CUR_01A_MIN = 0
 SERVO_CUR_01A_MAX = 3000
 
@@ -221,6 +223,40 @@ def set_motor_speed(msg, passage, motor_id, spd_rpm, cur_01a, ack_status=1):
         motor_slot.data[4] = b0
         motor_slot.data[5] = (cur_01a >> 8) & 0xFF
         motor_slot.data[6] = cur_01a & 0xFF
+
+
+def set_motor_position(msg, passage, motor_id, pos_deg, spd_01rpm=50, cur_01a=500, ack_status=2):
+    """Servo position control (official C: set_motor_position).
+
+    - pos_deg: desired motor position in degrees
+    - spd_01rpm: speed limit in 0.1 rpm units, range [0, 18000]
+    - cur_01a: current threshold in 0.1A units, range [0, 3000]
+    - ack_status: 0=no ack, 1~3=response frame type
+    """
+    idx = passage - 1
+    motor_slot = msg.motor[idx]
+
+    if ack_status < 0 or ack_status > 3:
+        raise ValueError(f"ack_status must be 0..3, got {ack_status}")
+
+    pos_deg = float(pos_deg)
+    spd_01rpm = int(clamp(int(spd_01rpm), SERVO_POS_SPD_01RPM_MIN, SERVO_POS_SPD_01RPM_MAX))
+    cur_01a = int(clamp(int(cur_01a), SERVO_CUR_01A_MIN, SERVO_CUR_01A_MAX))
+
+    msg.can_ide = 0
+    motor_slot.rtr = 0
+    motor_slot.id = int(motor_id)
+    motor_slot.dlc = 8
+
+    b0, b1, b2, b3 = _float_to_u8_le(pos_deg)
+    motor_slot.data[0] = (0x20 | (b3 >> 3)) & 0xFF
+    motor_slot.data[1] = ((b3 << 5) | (b2 >> 3)) & 0xFF
+    motor_slot.data[2] = ((b2 << 5) | (b1 >> 3)) & 0xFF
+    motor_slot.data[3] = ((b1 << 5) | (b0 >> 3)) & 0xFF
+    motor_slot.data[4] = ((b0 << 5) | (spd_01rpm >> 10)) & 0xFF
+    motor_slot.data[5] = ((spd_01rpm & 0x3FC) >> 2) & 0xFF
+    motor_slot.data[6] = (((spd_01rpm & 0x03) << 6) | (cur_01a >> 6)) & 0xFF
+    motor_slot.data[7] = (((cur_01a & 0x3F) << 2) | int(ack_status)) & 0xFF
 
 
 def set_motor_cur_tor(msg, passage, motor_id, cur_tor_001, ctrl_status=1, ack_status=1):
