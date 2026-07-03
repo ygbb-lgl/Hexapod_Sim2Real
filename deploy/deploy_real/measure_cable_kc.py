@@ -153,7 +153,7 @@ def build_output_path(output_dir: str, amplitude_deg: float, frequency_hz: float
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Collect sine cable tension data for K/C estimation.")
-    parser.add_argument("--ifname", default="enp106s0")
+    parser.add_argument("--ifname", default="enp86s0")
     parser.add_argument("--sensor-port", default="/dev/ttyUSB_cable_tension")
     parser.add_argument("--baudrate", type=int, default=115200)
     parser.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
