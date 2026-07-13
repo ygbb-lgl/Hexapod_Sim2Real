@@ -23,6 +23,10 @@ class Config:
 
             self.policy_path = config["policy_path"].replace("{ROOT_DIR}", ROOT_DIR)
 
+            self.pre_tension_model_path = config["pre_tension_model_path"].replace(
+                "{ROOT_DIR}", ROOT_DIR
+            )
+
             self.default_angles = np.array(config["default_angles"], dtype=np.float32)
 
             self.command_scale = config["command_scale"]

@@ -26,6 +26,123 @@ from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 import config_hexapod_tethered
 
 from config_hexapod_tethered import Config
+from pre_tension import DataConfig, ModelConfig, TCNGRUTensionPredictor
+
+
+class OnlineTensionPredictor:
+    """Load a pre_tension.py checkpoint and run causal delta-F prediction."""
+
+    def __init__(self, checkpoint_path: str, control_dt: float) -> None:
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+        self.data_cfg = DataConfig(**checkpoint["data_config"])
+        self.model_cfg = ModelConfig(**checkpoint["model_config"])
+        if abs(float(self.data_cfg.expected_dt_s) - float(control_dt)) > 1e-6:
+            raise ValueError(
+                f"predictor was trained at dt={self.data_cfg.expected_dt_s}, "
+                f"but deployment control_dt={control_dt}"
+            )
+        self.model = TCNGRUTensionPredictor(self.data_cfg, self.model_cfg).to(self.device)
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model.eval()
+        norm = checkpoint["normalization"]
+        self.history_mean = np.asarray(norm["history_mean"], np.float32)
+        self.history_std = np.asarray(norm["history_std"], np.float32)
+        self.preview_mean = np.asarray(norm["preview_mean"], np.float32)
+        self.preview_std = np.asarray(norm["preview_std"], np.float32)
+        self.torque_mean = float(norm["torque_mean"])
+        self.torque_std = float(norm["torque_std"])
+        self.feature_names = list(checkpoint["feature_names"])
+        self.preview_names = list(checkpoint["preview_names"])
+        if len(self.feature_names) != 71 or len(self.preview_names) != 22:
+            raise ValueError(
+                f"incompatible checkpoint dimensions: history={len(self.feature_names)}, "
+                f"preview={len(self.preview_names)}; expected 71 and 22"
+            )
+        self.history = deque(maxlen=self.data_cfg.history_len)
+        self._force_filtered = None
+        self._acceleration_filtered = None
+
+    @property
+    def ready(self) -> bool:
+        return len(self.history) == self.data_cfg.history_len
+
+    def causal_filter(self, force_n: float, acceleration) -> tuple:
+        # These alphas must match data collection. They are preprocessing, not
+        # trainable model parameters.
+        alpha = 0.2
+        acceleration = np.asarray(acceleration, np.float32).reshape(3)
+        if self._force_filtered is None:
+            self._force_filtered = float(force_n)
+            self._acceleration_filtered = acceleration.copy()
+        else:
+            self._force_filtered = alpha * float(force_n) + (1.0-alpha) * self._force_filtered
+            self._acceleration_filtered = alpha * acceleration + (1.0-alpha) * self._acceleration_filtered
+        return float(self._force_filtered), self._acceleration_filtered.copy()
+
+    @staticmethod
+    def _put_vector(frame, prefix: str, values) -> None:
+        for i, value in enumerate(np.asarray(values, np.float32).reshape(-1)):
+            frame[f"{prefix}_{i}"] = float(value)
+
+    def append_observation(self, *, force_filtered_n: float, torque_actual_nm: float,
+                           torque_command_prev_nm: float, motor_position_rad: float,
+                           force_reference_n: float, velocity_command,
+                           scaled_policy_action, joint_position, joint_velocity,
+                           gravity, angular_velocity, linear_acceleration) -> None:
+        frame = {
+            "force_filtered_n": float(force_filtered_n),
+            "torque_actual_nm": float(torque_actual_nm),
+            "torque_command_prev_nm": float(torque_command_prev_nm),
+            "motor_position_rad": float(motor_position_rad),
+            "force_reference_n": float(force_reference_n),
+        }
+        self._put_vector(frame, "velocity_command", velocity_command)
+        self._put_vector(frame, "policy_action", scaled_policy_action)
+        self._put_vector(frame, "joint_position", joint_position)
+        self._put_vector(frame, "joint_velocity", joint_velocity)
+        self._put_vector(frame, "body_gravity_vector", gravity)
+        self._put_vector(frame, "body_angular_velocity", angular_velocity)
+        self._put_vector(frame, "body_linear_acceleration_filtered", linear_acceleration)
+        self.history.append(frame)
+
+    def predict_delta_force(self, candidate_torque_nm: float, force_reference_n: float,
+                            velocity_command, scaled_policy_action) -> Optional[np.ndarray]:
+        if not self.ready:
+            return None
+        first_motor_position = self.history[0]["motor_position_rad"]
+        history = np.empty((self.data_cfg.history_len, len(self.feature_names)), np.float32)
+        for row_index, frame in enumerate(self.history):
+            values = dict(frame)
+            values["motor_position_relative"] = frame["motor_position_rad"] - first_motor_position
+            history[row_index] = [values[name] for name in self.feature_names]
+        history = (history - self.history_mean) / self.history_std
+
+        preview_values = ([float(force_reference_n)]
+                          + np.asarray(velocity_command, np.float32).reshape(3).tolist()
+                          + np.asarray(scaled_policy_action, np.float32).reshape(18).tolist())
+        preview = np.repeat(np.asarray(preview_values, np.float32)[None, :],
+                            self.data_cfg.horizon, axis=0)
+        preview = (preview - self.preview_mean) / self.preview_std
+        torque = np.full((self.data_cfg.horizon, 1), float(candidate_torque_nm), np.float32)
+        torque = (torque - self.torque_mean) / self.torque_std
+        queue_len = self.data_cfg.action_delay_steps - 1
+        if queue_len:
+            queue = np.asarray(
+                [frame["torque_command_prev_nm"] for frame in list(self.history)[-queue_len:]],
+                np.float32,
+            )[:, None]
+            queue = (queue - self.torque_mean) / self.torque_std
+        else:
+            queue = np.empty((0, 1), np.float32)
+        with torch.inference_mode():
+            delta = self.model(
+                torch.from_numpy(history).unsqueeze(0).to(self.device),
+                torch.from_numpy(torque).unsqueeze(0).to(self.device),
+                torch.from_numpy(preview).unsqueeze(0).to(self.device),
+                torch.from_numpy(queue).unsqueeze(0).to(self.device),
+            )
+        return delta[0].cpu().numpy()
 
 
 class RealTimePlotter:
@@ -243,6 +360,9 @@ class Controller:
         self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
 
         self.policy = torch.jit.load(config.policy_path)
+        self.tension_predictor = OnlineTensionPredictor(
+            config.pre_tension_model_path, float(config.control_dt)
+        )
         # 预热网络，减少第一次推理的延迟
         self._warm_up()
         
@@ -255,6 +375,8 @@ class Controller:
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
         self.counter = 0
+        self._previous_spool_torque_command_nm = 0.0
+        self.last_predicted_delta_force = None
 
         # Create log directory with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -534,17 +656,21 @@ class Controller:
         # 计算yaw差值（arm相对body的yaw角度），作为观测输入提供给策略网络
         yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=yaw_value, offset_deg=self.config.offset_deg)
         yaw_differ_value = 0
-        if imu_data is None:
+        if imu_data is None or vel is None or grav is None:
             # 如果没有 IMU 数据，使用全 0
             linvel = np.zeros(3, dtype=np.float32)
             ang_vel = np.zeros(3, dtype=np.float32)
             gravity_orientation = np.array([0.0, 0.0, -1.0], dtype=np.float32)  # 假设重力向下
+            body_linear_acceleration = np.zeros(3, dtype=np.float32)
         else:
             linvel = np.asarray(vel, dtype=np.float32)
             ang_vel = np.asarray(
                 [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']], dtype=np.float32
             )
             gravity_orientation = np.asarray(grav, dtype=np.float32)
+            body_linear_acceleration = np.asarray(
+                [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']], dtype=np.float32
+            )
 
             # Match sim2sim convention: gravity is a unit vector in body frame.
             g_norm = float(np.linalg.norm(gravity_orientation))
@@ -591,6 +717,25 @@ class Controller:
         # target_dof_pos = self.config.default_angles
         
         target_tension = self.action[18] * self.config.tension_action_scale
+        scaled_policy_action = self.action[:18] * float(self.config.action_scale)
+
+        force_filtered_n, acceleration_filtered = self.tension_predictor.causal_filter(
+            float(tension_value), body_linear_acceleration
+        )
+        self.tension_predictor.append_observation(
+            force_filtered_n=force_filtered_n,
+            torque_actual_nm=float(self.robot.spool_state_buffer.torque[0]),
+            torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
+            motor_position_rad=float(self.spool_q[0]),
+            force_reference_n=float(target_tension),
+            velocity_command=self.cmd,
+            scaled_policy_action=scaled_policy_action,
+            joint_position=self.qj,
+            joint_velocity=self.dqj,
+            gravity=gravity_orientation,
+            angular_velocity=ang_vel,
+            linear_acceleration=acceleration_filtered,
+        )
 
         for i in range(18):
             q = target_dof_pos[i]
@@ -646,7 +791,17 @@ class Controller:
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
         )
+        # The learned model is called causally after u_k has been computed.  At
+        # this stage it predicts the delta-F trajectory for that proposed
+        # command; it does not create a second force output.
+        self.last_predicted_delta_force = self.tension_predictor.predict_delta_force(
+            candidate_torque_nm=float(spool_torque_cmd),
+            force_reference_n=float(target_tension),
+            velocity_command=self.cmd,
+            scaled_policy_action=scaled_policy_action,
+        )
         self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
+        self._previous_spool_torque_command_nm = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
         # Update real-time plots (best-effort; does nothing if disabled)
