@@ -1,7 +1,7 @@
 """Train an action-conditioned short-horizon tether-tension predictor.
 
-CSV INPUT FORMAT (one row per 250 Hz *pre-action* observation)
-================================================================
+CSV INPUT FORMAT (one row per configured-rate *pre-action* observation)
+======================================================================
 The CSV must be sorted by ``trajectory_id, timestamp_ns`` (the loader sorts and
 validates it again).  A vector ``name`` of length D is stored as D scalar columns
 ``name_0 ... name_{D-1}``.  Do not put Python lists or JSON strings in cells.
@@ -44,10 +44,19 @@ Future policy preview is deliberately built only from row k: F_ref, velocity
 command and the scaled policy action are zero-order-held. Logged future policy
 outputs are never read into preview.
 
-Example::
+Inspect and train from the repository root (current logger is 50 Hz)::
 
-    python pre_tension.py train --csv logs.csv --output tension_model.pt
-    python pre_tension.py inspect-csv --csv logs.csv
+    conda run -n isaacgym python deploy/deploy_real/pre_tension.py inspect-csv \
+        --csv deploy/deploy_real/pre_data/merged_training_data.csv \
+        --expected-dt-s 0.02
+
+    conda run -n isaacgym python deploy/deploy_real/pre_tension.py train \
+        --csv deploy/deploy_real/pre_data/merged_training_data.csv \
+        --output deploy/pre_train/hexapod_tethered/tension_model.pt \
+        --expected-dt-s 0.02
+
+For a true 250 Hz dataset, use ``--expected-dt-s 0.004`` instead.  Do not
+train 50 Hz data while labeling it as 250 Hz.
 
 The checkpoint contains the model, configuration, train-only normalization,
 trajectory split and metrics needed by later deployment code.

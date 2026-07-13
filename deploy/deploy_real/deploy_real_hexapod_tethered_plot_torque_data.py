@@ -662,12 +662,17 @@ class Controller:
             raise RuntimeError("Gamepad is not available; cannot run control loop")
 
         self.counter += 1
-        observation_timestamp_ns = time.time_ns()
+        # Monotonic host time is used for interval/order validation. Unlike
+        # wall-clock time it cannot jump backwards after NTP/manual correction.
+        observation_timestamp_ns = time.monotonic_ns()
         for i in range(18):
             self.qj[i] = self.robot.motor_state_buffer.position[i]
             self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
 
         self.spool_q[0] = self.robot.spool_state_buffer.position[0]
+        # Snapshot tau_actual_k before computing/writing the new command u_k.
+        # Do not read this shared driver buffer again for the same CSV row.
+        spool_torque_actual_pre_action = float(self.robot.spool_state_buffer.torque[0])
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
@@ -826,7 +831,7 @@ class Controller:
             timestamp_ns=observation_timestamp_ns,
             force_raw_n=float(tension_value),
             force_filtered_n=force_filtered_n,
-            torque_actual_nm=float(spool_torque),
+            torque_actual_nm=spool_torque_actual_pre_action,
             torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
             torque_command_issued_nm=float(spool_torque_cmd),
             motor_position_rad=float(self.spool_q[0]),
