@@ -88,7 +88,7 @@ class DataConfig:
     policy_action_dim: int = 18
     joint_dim: int = 18
     action_delay_steps: int = 1
-    expected_dt_s: float = 0.004
+    expected_dt_s: float = 0.02
     timestamp_tolerance: float = 0.35
     use_body_linear_acceleration: bool = True
     use_actual_torque: bool = True
