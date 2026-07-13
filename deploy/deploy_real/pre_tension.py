@@ -12,23 +12,19 @@ Required scalar columns::
     force_filtered_n, torque_actual_nm,
     torque_command_prev_nm, torque_command_issued_nm,
     motor_position_rad, force_reference_n,
-    policy_substep, steps_until_policy_update,
     saturation_flag, emergency_flag, data_valid_flag
 
 Required vector columns (default dimensions shown)::
 
     velocity_command_0 ... velocity_command_{velocity_dim-1}     (default 3)
-    policy_action_0 ... policy_action_17                          (18)
-    joint_position_target_0 ... joint_position_target_17          (18)
+    policy_action_0 ... policy_action_17                          (18,
+        already multiplied by action_scale; physical position increment)
     joint_position_0 ... joint_position_17                        (18)
     joint_velocity_0 ... joint_velocity_17                        (18)
     body_gravity_vector_0 ... body_gravity_vector_2               (3)
     body_angular_velocity_0 ... body_angular_velocity_2           (3)
     body_linear_acceleration_filtered_0 ... _2                    (3)
-    foot_position_body_0 ... foot_position_body_17                (6x3 flattened)
-    foot_velocity_body_0 ... foot_velocity_body_17                (6x3 flattened)
 
-``joint_position_error`` need not be stored: it is computed as target-position.
 ``force_raw_n`` and optional drive fields may be present but are not used by this
 first-stage model.  Missing/NaN required values make a row invalid; windows that
 contain invalid, emergency, or saturated rows are rejected.  A training window
@@ -45,9 +41,8 @@ Thus a sample centered at k contains history [o_{k-N+1},...,o_k], future action
 issued command into the previous-command column of the same row.
 
 Future policy preview is deliberately built only from row k: F_ref, velocity
-command, policy action and joint target are zero-order-held.  Logged future
-policy outputs are never read into preview.  ``preview_known_mask`` becomes zero
-after the next unknown 50 Hz policy update.
+command and the scaled policy action are zero-order-held. Logged future policy
+outputs are never read into preview.
 
 Example::
 
@@ -83,13 +78,9 @@ class DataConfig:
     velocity_dim: int = 3
     policy_action_dim: int = 18
     joint_dim: int = 18
-    foot_dim: int = 18
-    policy_period_steps: int = 5
     action_delay_steps: int = 1
     expected_dt_s: float = 0.004
     timestamp_tolerance: float = 0.35
-    use_foot_kinematics: bool = True
-    use_joint_target_error: bool = True
     use_body_linear_acceleration: bool = True
     use_actual_torque: bool = True
     use_policy_action: bool = True
@@ -182,10 +173,7 @@ class FeatureLayout:
                     + _vector_columns("body_gravity_vector", 3)
                     + _vector_columns("body_angular_velocity", 3),
             "leg": _vector_columns("joint_position", cfg.joint_dim)
-                   + _vector_columns("joint_velocity", cfg.joint_dim)
-                   + _vector_columns("joint_position_target", cfg.joint_dim),
-            "scheduler": ["policy_substep_normalized",
-                          "steps_until_policy_update_normalized"],
+                   + _vector_columns("joint_velocity", cfg.joint_dim),
         }
         if cfg.use_actual_torque:
             groups["tether"].append("torque_actual_nm")
@@ -193,13 +181,8 @@ class FeatureLayout:
                              "motor_position_relative", "force_reference_n"]
         if cfg.use_body_linear_acceleration:
             groups["body"] += _vector_columns("body_linear_acceleration_filtered", 3)
-        if cfg.use_joint_target_error:
-            groups["leg"] += _vector_columns("joint_position_error", cfg.joint_dim)
         if cfg.use_policy_action:
             groups["leg"] += _vector_columns("policy_action", cfg.policy_action_dim)
-        if cfg.use_foot_kinematics:
-            groups["leg"] += _vector_columns("foot_position_body", cfg.foot_dim)
-            groups["leg"] += _vector_columns("foot_velocity_body", cfg.foot_dim)
         self.groups = groups
         self.names = sum(groups.values(), [])
         offset = 0
@@ -214,7 +197,7 @@ class CsvTrajectories:
     REQUIRED_SCALARS = [
         "timestamp_ns", "trajectory_id", "force_filtered_n", "torque_actual_nm",
         "torque_command_prev_nm", "torque_command_issued_nm", "motor_position_rad",
-        "force_reference_n", "policy_substep", "steps_until_policy_update",
+        "force_reference_n",
         "saturation_flag", "emergency_flag", "data_valid_flag",
     ]
 
@@ -223,11 +206,7 @@ class CsvTrajectories:
         layout = FeatureLayout(cfg)
         required = set(self.REQUIRED_SCALARS)
         # Derived/model-only fields are excluded here.
-        required.update(n for n in layout.names if n not in {
-            "motor_position_relative", "policy_substep_normalized",
-            "steps_until_policy_update_normalized"
-        } and not n.startswith("joint_position_error_"))
-        required.update(_vector_columns("joint_position_target", cfg.joint_dim))
+        required.update(n for n in layout.names if n != "motor_position_relative")
         required.update(_vector_columns("joint_position", cfg.joint_dim))
         with path.open("r", newline="") as f:
             reader = csv.DictReader(f)
@@ -281,10 +260,7 @@ class WindowBuilder:
         self.preview_names = (["force_reference_hold"]
             + _vector_columns("velocity_command_hold", cfg.velocity_dim)
             + (_vector_columns("policy_action_hold", cfg.policy_action_dim)
-               if cfg.use_policy_action else [])
-            + _vector_columns("joint_position_target_hold", cfg.joint_dim)
-            + ["policy_substep_future", "steps_until_policy_update_future",
-               "preview_known_mask"])
+               if cfg.use_policy_action else []))
         self.preview_dim = len(self.preview_names)
 
     def valid_centers(self, ids: Iterable[str]) -> List[Tuple[str, int]]:
@@ -317,11 +293,6 @@ class WindowBuilder:
         for i, r in enumerate(rows):
             values: Dict[str, float] = dict(r)
             values["motor_position_relative"] = float(r["motor_position_rad"]) - motor_origin
-            values["policy_substep_normalized"] = float(r["policy_substep"]) / max(self.cfg.policy_period_steps - 1, 1)
-            values["steps_until_policy_update_normalized"] = float(r["steps_until_policy_update"]) / self.cfg.policy_period_steps
-            for j in range(self.cfg.joint_dim):
-                values[f"joint_position_error_{j}"] = (float(r[f"joint_position_target_{j}"])
-                                                        - float(r[f"joint_position_{j}"]))
             output[i] = [values[name] for name in self.layout.names]
         return output
 
@@ -330,19 +301,8 @@ class WindowBuilder:
         held = ([float(r["force_reference_n"])]
                 + self._values(r, "velocity_command", c.velocity_dim)
                 + (self._values(r, "policy_action", c.policy_action_dim)
-                   if c.use_policy_action else [])
-                + self._values(r, "joint_position_target", c.joint_dim))
-        steps_left = int(round(float(r["steps_until_policy_update"])))
-        substep = int(round(float(r["policy_substep"])))
-        result = []
-        for h in range(c.horizon):
-            advance = h + 1
-            known = 1.0 if advance < steps_left else 0.0
-            future_substep = (substep + advance) % c.policy_period_steps
-            future_until = c.policy_period_steps - future_substep
-            result.append(held + [future_substep / max(c.policy_period_steps - 1, 1),
-                                  future_until / c.policy_period_steps, known])
-        return np.asarray(result, np.float32)
+                   if c.use_policy_action else []))
+        return np.repeat(np.asarray(held, np.float32)[None, :], c.horizon, axis=0)
 
     def raw_actions_targets(self, tid: str, k: int
                             ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
@@ -412,7 +372,8 @@ class GroupedFrameEncoder(nn.Module):
             name: MLP(sl.stop - sl.start, cfg.group_hidden_dim, cfg.group_hidden_dim)
             for name, sl in self.slices.items()
         })
-        self.fuse = nn.Sequential(nn.Linear(4 * cfg.group_hidden_dim, cfg.frame_embed_dim),
+        self.fuse = nn.Sequential(nn.Linear(len(self.slices) * cfg.group_hidden_dim,
+                                            cfg.frame_embed_dim),
                                   nn.SiLU())
 
     def forward(self, x: Tensor) -> Tensor:
@@ -494,7 +455,7 @@ class TCNGRUTensionPredictor(nn.Module):
         self.latent_projection = nn.Sequential(
             nn.Linear(model_cfg.tcn_channels, model_cfg.latent_dim), nn.Tanh())
         # Formula mirrors WindowBuilder.preview_names without requiring data.
-        pdim = (1 + data_cfg.velocity_dim + data_cfg.joint_dim + 3
+        pdim = (1 + data_cfg.velocity_dim
                 + (data_cfg.policy_action_dim if data_cfg.use_policy_action else 0))
         self.gru = nn.GRUCell(1 + pdim, model_cfg.gru_hidden_dim)
         self.force_delta_head = ForceDeltaHead(model_cfg.gru_hidden_dim)
@@ -510,20 +471,19 @@ class TCNGRUTensionPredictor(nn.Module):
         return combined[:, :future_torque.shape[1]]
 
     def rollout_from_latent(self, z_k: Tensor, future_torque: Tensor,
-                            future_preview: Tensor, current_force: Tensor,
-                            delay_queue_state: Tensor) -> Tuple[Tensor, Tensor]:
+                            future_preview: Tensor,
+                            delay_queue_state: Tensor) -> Tensor:
         effective = self.effective_torque(future_torque, delay_queue_state)
         z, deltas = z_k, []
         for h in range(future_torque.shape[1]):
             z = self.gru(torch.cat((effective[:, h], future_preview[:, h]), -1), z)
             deltas.append(self.force_delta_head(z))
-        pred_delta = torch.cat(deltas, dim=1)
-        return pred_delta, current_force + pred_delta
+        return torch.cat(deltas, dim=1)
 
     def forward(self, history: Tensor, future_torque: Tensor, future_preview: Tensor,
-                current_force: Tensor, delay_queue_state: Tensor) -> Tuple[Tensor, Tensor]:
+                delay_queue_state: Tensor) -> Tensor:
         return self.rollout_from_latent(self.encode_history(history), future_torque,
-                                        future_preview, current_force, delay_queue_state)
+                                        future_preview, delay_queue_state)
 
 
 class TensionLoss(nn.Module):
@@ -538,9 +498,10 @@ class TensionLoss(nn.Module):
         self.register_buffer("weights", torch.tensor(weights)[None, :])
         self.cfg = cfg
 
-    def forward(self, pred_delta: Tensor, pred_force: Tensor, target: Tensor,
+    def forward(self, pred_delta: Tensor, target: Tensor,
                 current: Tensor) -> Tuple[Tensor, Dict[str, Tensor]]:
         target_delta = target - current
+        pred_force = current + pred_delta
         point = F.huber_loss(pred_delta, target_delta, reduction="none",
                              delta=self.cfg.huber_delta)
         force_loss = (point * self.weights).sum() / self.weights.sum() / pred_delta.shape[0]
@@ -565,15 +526,16 @@ def _to_device(batch: Mapping[str, Tensor], device: torch.device) -> Dict[str, T
 
 
 def evaluate(model: nn.Module, loader: DataLoader, loss_fn: TensionLoss,
-             device: torch.device) -> Dict[str, float]:
+             device: torch.device, dt_s: float) -> Dict[str, float]:
     model.eval()
     losses, predictions, targets = [], [], []
     with torch.inference_mode():
         for raw in loader:
             b = _to_device(raw, device)
-            delta, force = model(b["history"], b["future_torque"], b["future_preview"],
-                                 b["current_force"], b["delay_queue_state"])
-            loss, _ = loss_fn(delta, force, b["target_force"], b["current_force"])
+            delta = model(b["history"], b["future_torque"], b["future_preview"],
+                          b["delay_queue_state"])
+            force = b["current_force"] + delta
+            loss, _ = loss_fn(delta, b["target_force"], b["current_force"])
             losses.append(loss.item() * len(force))
             predictions.append(force.cpu())
             targets.append(b["target_force"].cpu())
@@ -584,7 +546,8 @@ def evaluate(model: nn.Module, loader: DataLoader, loss_fn: TensionLoss,
     metrics = {"loss": sum(losses) / len(pred),
                "rmse": error.square().mean().sqrt().item()}
     for h in range(pred.shape[1]):
-        metrics[f"mae_{4*(h+1)}ms"] = error[:, h].abs().mean().item()
+        milliseconds = int(round(1000.0 * dt_s * (h + 1)))
+        metrics[f"mae_{milliseconds}ms"] = error[:, h].abs().mean().item()
     if pred.shape[1] > 1:
         metrics["trend_sign_accuracy"] = (torch.sign(torch.diff(pred, dim=1)) ==
                                            torch.sign(torch.diff(target, dim=1))).float().mean().item()
@@ -626,14 +589,14 @@ def train(args: argparse.Namespace) -> None:
         for raw in loaders["train"]:
             b = _to_device(raw, device)
             optimizer.zero_grad(set_to_none=True)
-            delta, force = model(b["history"], b["future_torque"], b["future_preview"],
-                                 b["current_force"], b["delay_queue_state"])
-            loss, _ = loss_fn(delta, force, b["target_force"], b["current_force"])
+            delta = model(b["history"], b["future_torque"], b["future_preview"],
+                          b["delay_queue_state"])
+            loss, _ = loss_fn(delta, b["target_force"], b["current_force"])
             loss.backward()
             nn.utils.clip_grad_norm_(model.parameters(), train_cfg.grad_clip_norm)
             optimizer.step()
             running += loss.item() * len(b["history"])
-        val = evaluate(model, loaders["val"], loss_fn, device)
+        val = evaluate(model, loaders["val"], loss_fn, device, data_cfg.expected_dt_s)
         print(f"epoch={epoch:03d} train_loss={running/len(datasets['train']):.6f} "
               f"val_loss={val['loss']:.6f} val_rmse={val['rmse']:.4f}")
         if val["loss"] < best:
@@ -646,7 +609,8 @@ def train(args: argparse.Namespace) -> None:
                 break
     assert best_state is not None
     model.load_state_dict(best_state)
-    test_metrics = evaluate(model, loaders["test"], loss_fn, device)
+    test_metrics = evaluate(model, loaders["test"], loss_fn, device,
+                            data_cfg.expected_dt_s)
     checkpoint = {
         "model_state_dict": best_state, "data_config": asdict(data_cfg),
         "model_config": asdict(model_cfg), "train_config": asdict(train_cfg),
@@ -664,7 +628,8 @@ def train(args: argparse.Namespace) -> None:
 
 def inspect_csv(args: argparse.Namespace) -> None:
     cfg = DataConfig(history_len=args.history_len, horizon=args.horizon,
-                     action_delay_steps=args.action_delay_steps)
+                     action_delay_steps=args.action_delay_steps,
+                     expected_dt_s=args.expected_dt_s)
     data = CsvTrajectories(Path(args.csv), cfg)
     builder = WindowBuilder(data, cfg)
     counts = {tid: len(builder.valid_centers([tid])) for tid in data.trajectories}
@@ -682,6 +647,7 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--history-len", type=int, default=64)
     common.add_argument("--horizon", type=int, default=5)
     common.add_argument("--action-delay-steps", type=int, default=1)
+    common.add_argument("--expected-dt-s", type=float, default=0.004)
     check = sub.add_parser("inspect-csv", parents=[common])
     check.set_defaults(func=inspect_csv)
     run = sub.add_parser("train", parents=[common])

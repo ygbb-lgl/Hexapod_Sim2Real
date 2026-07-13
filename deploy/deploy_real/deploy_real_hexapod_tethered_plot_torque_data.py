@@ -1,0 +1,925 @@
+import numpy as np
+import time
+import torch
+import csv
+import os
+from datetime import datetime
+from collections import deque
+from typing import Optional
+
+from imu_sdk_deta40.imu_sdk import IMUSDK
+
+from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_torque_cmd
+
+from hexapod_tethered_utils.tension_torque_controller import TensionTorqueController,TensionTorqueControllerConfig
+
+from motor_igh_sdk.deploy_real_el4090_pysoem_spool_torque import RL_Real_PySOEM_WithSpoolTorque
+
+
+from hexapod_tethered_utils.joystick_reader import Gamepad
+
+from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
+from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
+from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
+
+
+import config_hexapod_tethered
+
+from config_hexapod_tethered import Config
+
+
+class TensionTrainingCsvLogger:
+    """Write causally indexed rows consumed by ``pre_tension.py``.
+
+    Timing of every row k is intentionally explicit:
+      * ``force_filtered_n`` and robot state are observed at t_k;
+      * ``torque_command_prev_nm`` was executed before t_k (u_{k-1});
+      * ``torque_command_issued_nm`` is computed after that observation (u_k).
+
+    The predictor uses the 18 measured joint positions and velocities directly;
+    no foot position or foot velocity columns are recorded.
+
+    This script currently runs at Config.control_dt=0.02 s (50 Hz), so these
+    rows describe the actual 50 Hz loop, not an invented 250 Hz stream.
+    """
+
+    def __init__(self, directory: str, trajectory_id: str, control_dt: float,
+                 force_lpf_alpha: float = 0.2, acceleration_lpf_alpha: float = 0.2,
+                 flush_every_n: int = 50) -> None:
+        os.makedirs(directory, exist_ok=True)
+        self.path = os.path.join(directory, f"{trajectory_id}.csv")
+        self.trajectory_id = trajectory_id
+        self.control_dt = float(control_dt)
+        self.force_lpf_alpha = float(np.clip(force_lpf_alpha, 0.0, 1.0))
+        self.acceleration_lpf_alpha = float(np.clip(acceleration_lpf_alpha, 0.0, 1.0))
+        self.flush_every_n = max(int(flush_every_n), 1)
+        self._force_filtered = None
+        self._acceleration_filtered = None
+        self._rows = 0
+        self._file = open(self.path, "w", newline="", buffering=1024 * 1024)
+        self._fieldnames = self._make_fieldnames()
+        self._writer = csv.DictWriter(self._file, fieldnames=self._fieldnames)
+        self._writer.writeheader()
+        print(f"[PreTensionCSV] logging enabled: {self.path}")
+
+    @staticmethod
+    def _names(prefix: str, size: int):
+        return [f"{prefix}_{i}" for i in range(size)]
+
+    @classmethod
+    def _make_fieldnames(cls):
+        scalar = [
+            "timestamp_ns", "trajectory_id", "sample_index", "control_dt_s",
+            "force_raw_n", "force_filtered_n", "torque_actual_nm",
+            "torque_command_prev_nm", "torque_command_issued_nm",
+            "motor_position_rad", "force_reference_n",
+            "imu_valid", "tension_sensor_valid",
+            "saturation_flag", "emergency_flag", "data_valid_flag",
+        ]
+        vectors = []
+        for name, size in (
+            ("velocity_command", 3), ("policy_action", 18),
+            ("joint_position", 18), ("joint_velocity", 18),
+            ("body_gravity_vector", 3), ("body_angular_velocity", 3),
+            ("body_linear_acceleration_filtered", 3),
+        ):
+            vectors.extend(cls._names(name, size))
+        return scalar + vectors
+
+    @staticmethod
+    def _put_vector(row, prefix: str, value, size: int) -> None:
+        array = np.asarray(value, dtype=np.float64).reshape(-1)
+        if array.size != size:
+            raise ValueError(f"{prefix} must contain {size} values, got {array.size}")
+        for i, item in enumerate(array):
+            row[f"{prefix}_{i}"] = float(item)
+
+    def causal_filter(self, force_raw_n: float, acceleration_body) -> tuple:
+        force = float(force_raw_n)
+        acceleration = np.asarray(acceleration_body, dtype=np.float32).reshape(3)
+        if self._force_filtered is None:
+            self._force_filtered = force
+        else:
+            a = self.force_lpf_alpha
+            self._force_filtered = a * force + (1.0 - a) * self._force_filtered
+        if self._acceleration_filtered is None:
+            self._acceleration_filtered = acceleration.copy()
+        else:
+            a = self.acceleration_lpf_alpha
+            self._acceleration_filtered = (
+                a * acceleration + (1.0 - a) * self._acceleration_filtered
+            )
+        return float(self._force_filtered), self._acceleration_filtered.copy()
+
+    def write(self, *, timestamp_ns: int, force_raw_n: float,
+              force_filtered_n: float, torque_actual_nm: float,
+              torque_command_prev_nm: float, torque_command_issued_nm: float,
+              motor_position_rad: float, force_reference_n: float,
+              velocity_command, policy_action, joint_position, joint_velocity,
+              body_gravity_vector,
+              body_angular_velocity, body_linear_acceleration_filtered,
+              imu_valid: bool, tension_sensor_valid: bool,
+              saturation_flag: bool, emergency_flag: bool = False) -> None:
+        q = np.asarray(joint_position, dtype=np.float32).reshape(18)
+        # The policy is evaluated on every invocation of run(), so there is no
+        # hidden 250 Hz substep in this particular script.
+        row = {
+            "timestamp_ns": int(timestamp_ns), "trajectory_id": self.trajectory_id,
+            "sample_index": self._rows, "control_dt_s": self.control_dt,
+            "force_raw_n": float(force_raw_n),
+            "force_filtered_n": float(force_filtered_n),
+            "torque_actual_nm": float(torque_actual_nm),
+            "torque_command_prev_nm": float(torque_command_prev_nm),
+            "torque_command_issued_nm": float(torque_command_issued_nm),
+            "motor_position_rad": float(motor_position_rad),
+            "force_reference_n": float(force_reference_n),
+            "imu_valid": int(imu_valid),
+            "tension_sensor_valid": int(tension_sensor_valid),
+            "saturation_flag": int(saturation_flag),
+            "emergency_flag": int(emergency_flag),
+            "data_valid_flag": int(imu_valid and tension_sensor_valid),
+        }
+        self._put_vector(row, "velocity_command", velocity_command, 3)
+        self._put_vector(row, "policy_action", policy_action, 18)
+        self._put_vector(row, "joint_position", q, 18)
+        self._put_vector(row, "joint_velocity", joint_velocity, 18)
+        self._put_vector(row, "body_gravity_vector", body_gravity_vector, 3)
+        self._put_vector(row, "body_angular_velocity", body_angular_velocity, 3)
+        self._put_vector(row, "body_linear_acceleration_filtered",
+                         body_linear_acceleration_filtered, 3)
+        self._writer.writerow(row)
+        self._rows += 1
+        if self._rows % self.flush_every_n == 0:
+            self._file.flush()
+
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.flush()
+            self._file.close()
+            self._file = None
+
+
+class RealTimePlotter:
+    def __init__(
+        self,
+        history_seconds: float = 20.0,
+        control_dt: float = 0.02,
+        plot_every_n: int = 5,
+        enabled: bool = True,
+        csv_enabled: bool = True,
+        csv_path: Optional[str] = None,
+        csv_flush_every_n: int = 50,
+    ) -> None:
+        # Plotting and CSV logging are decoupled: plotting may be disabled due to
+        # missing GUI backend, but CSV logging should still work.
+        self.enabled = bool(enabled)
+        self.csv_enabled = bool(csv_enabled)
+        self.control_dt = float(control_dt)
+        self.plot_every_n = max(int(plot_every_n), 1)
+        self._csv_flush_every_n = max(int(csv_flush_every_n), 1)
+
+        self._step = 0
+        self._ok = False
+        self._csv_ok = False
+        self._csv_file = None
+        self._csv_writer = None
+
+        self._maxlen = max(int(history_seconds / max(self.control_dt, 1e-6)), 10)
+        self._t = deque(maxlen=self._maxlen)
+        self._tension_meas = deque(maxlen=self._maxlen)
+        self._tension_ref = deque(maxlen=self._maxlen)
+        self._yaw = deque(maxlen=self._maxlen)
+        self._imu_vx = deque(maxlen=self._maxlen)
+        self._spool_cmd_torque = deque(maxlen=self._maxlen)
+        self._spool_torque_buf = deque(maxlen=self._maxlen)
+
+        # CSV logger (best-effort)
+        if self.csv_enabled:
+            try:
+                if csv_path is None:
+                    csv_path = os.path.join(os.getcwd(), "plot_data.csv")
+                os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
+                self._csv_file = open(csv_path, "w", newline="")
+                self._csv_writer = csv.writer(self._csv_file)
+                self._csv_writer.writerow(
+                    [
+                        "t_s",
+                        "tension_value",
+                        "target_tension",
+                        "yaw_differ_value",
+                        "imu_vx",
+                        "spool_torque_cmd",
+                        "spool_torque_buffer",
+                    ]
+                )
+                self._csv_ok = True
+                print(f"[PlotCSV] logging enabled: {csv_path}")
+            except Exception as e:
+                self._csv_ok = False
+                self.csv_enabled = False
+                print(f"[PlotCSV] disabled due to error: {e}")
+
+        if not self.enabled:
+            return
+
+        try:
+            import matplotlib.pyplot as plt  # type: ignore
+
+            self._plt = plt
+            self._plt.ion()
+
+            self._fig, self._axs = self._plt.subplots(
+                4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
+            )
+            self._fig.canvas.manager.set_window_title("Hexapod Real-time Debug")
+
+            # 1) tension
+            ax = self._axs[0]
+            (self._ln_tension_meas,) = ax.plot([], [], label="tension_value")
+            (self._ln_tension_ref,) = ax.plot([], [], label="target_tension")
+            ax.set_ylabel("Tension")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 2) yaw_differ
+            ax = self._axs[1]
+            (self._ln_yaw,) = ax.plot([], [], label="yaw_differ_value")
+            ax.set_ylabel("Yaw (rad)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 3) imu vx
+            ax = self._axs[2]
+            (self._ln_imu_vx,) = ax.plot([], [], label="imu_vx")
+            ax.set_ylabel("IMU vx (m/s)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            # 4) spool cmd torque + buffer torque
+            ax = self._axs[3]
+            (self._ln_spool_cmd,) = ax.plot([], [], label="spool_torque_cmd")
+            (self._ln_spool_torque_buf,) = ax.plot([], [], label="spool_torque_buffer")
+            ax.set_ylabel("Spool Torque (Nm)")
+            ax.set_xlabel("Time (s)")
+            ax.grid(True)
+            ax.legend(loc="upper right")
+
+            self._ok = True
+        except Exception as e:
+            self._ok = False
+            print(f"[Plot] disabled due to error: {e}")
+
+    def close(self) -> None:
+        if self._csv_file is not None:
+            try:
+                self._csv_file.close()
+            except Exception:
+                pass
+            self._csv_file = None
+            self._csv_writer = None
+            self._csv_ok = False
+
+    def update(
+        self,
+        t_s: float,
+        tension_value: float,
+        target_tension: float,
+        yaw_differ_value: float,
+        imu_vx: float,
+        spool_torque_cmd: float,
+        spool_torque_buffer: float,
+    ) -> None:
+        self._step += 1
+
+        # Always append to CSV if enabled, even when plotting is disabled.
+        if self.csv_enabled and self._csv_ok and self._csv_writer is not None:
+            try:
+                self._csv_writer.writerow(
+                    [
+                        float(t_s),
+                        float(tension_value),
+                        float(target_tension),
+                        float(yaw_differ_value),
+                        float(imu_vx),
+                        float(spool_torque_cmd),
+                        float(spool_torque_buffer),
+                    ]
+                )
+                if (self._step % self._csv_flush_every_n) == 0 and self._csv_file is not None:
+                    self._csv_file.flush()
+            except Exception:
+                # Do not break the control loop due to IO issues.
+                self.csv_enabled = False
+                self._csv_ok = False
+
+        if not self.enabled or not self._ok:
+            return
+
+        self._t.append(float(t_s))
+        self._tension_meas.append(float(tension_value))
+        self._tension_ref.append(float(target_tension))
+        self._yaw.append(float(yaw_differ_value))
+        self._imu_vx.append(float(imu_vx))
+        self._spool_cmd_torque.append(float(spool_torque_cmd))
+        self._spool_torque_buf.append(float(spool_torque_buffer))
+
+        if (self._step % self.plot_every_n) != 0:
+            return
+
+        t = np.asarray(self._t, dtype=np.float32)
+        if t.size < 2:
+            return
+
+        self._ln_tension_meas.set_data(t, np.asarray(self._tension_meas, dtype=np.float32))
+        self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
+        self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
+        self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
+        self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_torque, dtype=np.float32))
+        self._ln_spool_torque_buf.set_data(t, np.asarray(self._spool_torque_buf, dtype=np.float32))
+
+        for ax in self._axs:
+            ax.relim()
+            ax.autoscale_view(scalex=True, scaley=True)
+
+        try:
+            self._fig.canvas.draw_idle()
+            self._fig.canvas.flush_events()
+            self._plt.pause(0.001)
+        except Exception:
+            # If GUI backend gets into a bad state, avoid blocking control loop.
+            self.enabled = False
+            print("[Plot] disabled (runtime GUI error)")
+
+
+class Controller:
+    def __init__(self,config:Config) -> None:
+        self.config = config
+        #self.remote_controller = RemoteController()
+
+        # 手柄（pygame）用于生成 cmd；遥控器仍用于按钮状态机（start/A/select）
+        self.gamepad = None
+        if Gamepad is not None:
+            try:
+                self.gamepad = Gamepad()
+            except Exception as e:
+                self.gamepad = None
+                print(f"[gamepad] disabled due to error: {e}")
+
+        self.ang_vel_scale = config.ang_vel
+        self.dof_pos_scale = config.dof_pos
+        self.dof_vel_scale = config.dof_vel
+        self.lin_vel_scale = config.lin_vel
+
+        # Policy-side per-joint gains (indexed by policy_idx 0..17)
+        self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
+
+        self.policy = torch.jit.load(config.policy_path)
+        # 预热网络，减少第一次推理的延迟
+        self._warm_up()
+        
+        # 初始化状态和命令
+        self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
+        self.spool_q = np.zeros(1, dtype=np.float32)
+        self.action = np.zeros(config.num_actions,dtype=np.float32)
+        self.target_dof_pos = config.default_angles.copy()
+        self.obs = np.zeros(config.num_obs,dtype=np.float32)
+        self.cmd = np.array([0, 0, 0],dtype=np.float32)
+        self.counter = 0
+
+        # Create log directory with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.log_dir = os.path.join(os.getcwd(), "motor_logs", f'motor_logs_{timestamp}')
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        # Predictor-training data is kept separately from plotting/motor debug
+        # logs.  One process invocation is one independent trajectory.
+        self.trajectory_id = f"hexapod_{timestamp}"
+        pre_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pre_data")
+        self.pre_tension_logger = TensionTrainingCsvLogger(
+            directory=pre_data_dir,
+            trajectory_id=self.trajectory_id,
+            control_dt=float(self.config.control_dt),
+            force_lpf_alpha=0.2,
+            acceleration_lpf_alpha=0.2,
+            flush_every_n=50,
+        )
+        # This is u_{k-1} at the next call to run().  It is deliberately not
+        # overwritten until the complete pre-action row has been written.
+        self._previous_spool_torque_command_nm = 0.0
+
+        # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
+        # Plot refresh is decimated to reduce impact on control timing.
+        self.plotter = RealTimePlotter(
+            history_seconds=20.0,
+            control_dt=float(self.config.control_dt),
+            plot_every_n=5,
+            enabled=True,
+            csv_enabled=True,
+            csv_path=os.path.join(self.log_dir, "plot_data.csv"),
+            csv_flush_every_n=50,
+        )
+        
+        # Open 18 CSV files for logging motor data
+        self.log_files = []
+        self.log_writers = []
+        for i in range(18):
+            motor_id = int(self.config.joint2motor_idx[i])
+            filepath = os.path.join(self.log_dir, f'motor_{motor_id:02d}_policy_idx_{i:02d}.csv')
+            log_file = open(filepath, 'w', newline='')
+            writer = csv.writer(log_file)
+            writer.writerow(['time_step', 'counter', 'target_pos', 'actual_pos', 'error', 'action'])
+            self.log_files.append(log_file)
+            self.log_writers.append(writer)
+            print(f'[Logging] Created {filepath}')
+
+        # 电机初始化 EtherCAT（单 Master）：18 关节 PD + 额外 spool 速度电机 motor_id=19 (slave_idx=3, passage=1)
+        # 这里的 'enp86s0' 就是网口名；如果你要换网口，改成你的实际 NIC。
+        # Spool (cable) motor is fixed in this project:
+        # motor_id=19 on slave_idx=3 passage=1, direction=+1.
+        self.robot = RL_Real_PySOEM_WithSpoolTorque('enp86s0')
+        self.robot_start = self.robot.start()
+        if not self.robot_start:
+            print("[WARNING] Robot start failed. Will use zero data.")
+
+        # Tension -> spool speed controller (pure numeric inputs, no sensor IO inside)
+        self.tension_torque_controller = TensionTorqueController(
+            TensionTorqueControllerConfig(
+			speed_sign=float(self.config.tsc_speed_sign),
+			k_p_forward_rpm_per_unit=float(self.config.tsc_k_p_forward_rpm_per_unit_torque),
+			k_p_backward_rpm_per_unit=float(self.config.tsc_k_p_backward_rpm_per_unit_torque),
+			k_d_forward_rpm_per_unit=float(self.config.tsc_k_d_forward_rpm_per_unit_torque),
+			k_d_backward_rpm_per_unit=float(self.config.tsc_k_d_backward_rpm_per_unit_torque),
+			k_i_forward_rpm_per_unit=float(self.config.tsc_k_i_forward_rpm_per_unit_torque),
+			k_i_backward_rpm_per_unit=float(self.config.tsc_k_i_backward_rpm_per_unit_torque),
+			ff_enabled=bool(self.config.tsc_ff_enabled),
+			ff_radius_m=float(self.config.tsc_ff_radius_m),
+			tension_deadband=float(self.config.tsc_tension_deadband),
+			tension_lpf_alpha=float(self.config.tsc_tension_lpf_alpha),
+            Kff_forward=float(self.config.tsc_Kff_forward_torque),
+            Kff_backward=float(self.config.tsc_Kff_backward_torque),
+			torque_limit=float(self.config.tsc_torque_limit),
+			torque_deadband=float(self.config.tsc_torque_deadband),
+            )
+        )
+
+        # imu init
+        self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
+        self.imu_started = self.imu.start()
+        if not self.imu_started:
+            print("[WARNING] IMU start failed. Will use zero data.")
+
+        # 六位力传感器初始化 RS232
+        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB_cable_tension', baudrate=115200)
+        self.tension_started = self.tension_sensor.start()
+        if not self.tension_started:
+            print("[WARNING] Tension sensor start failed. Will use zero data.")
+        
+        # 末端绝对角度传感器初始化 RS485
+        self.pitch_sensor = CableEndPitchSensor(port='/dev/ttyUSB_pitch', baudrate=115200)
+        self.pitch_started = self.pitch_sensor.start()
+        if not self.pitch_started:
+            print("[WARNING] Pitch sensor start failed. Will use zero data.")
+
+        # 磁栅编码器初始化 RS485
+        self.yaw_sensor = CableArmYawSensor(port='/dev/ttyUSB_yaw', baudrate=115200)
+        self.yaw_started = self.yaw_sensor.start()
+        if not self.yaw_started:
+            print("[WARNING] Yaw sensor start failed. Will use zero data.")
+
+    def __del__(self):
+        # Close all log files
+        for i in range(18):
+            try:
+                self.log_files[i].close()
+            except:
+                pass
+        if getattr(self, "plotter", None) is not None:
+            try:
+                self.plotter.close()
+            except Exception:
+                pass
+        if getattr(self, "pre_tension_logger", None) is not None:
+            try:
+                self.pre_tension_logger.close()
+            except Exception:
+                pass
+        print(f'[Logging] All log files saved to {self.log_dir}')
+
+    def _build_policy_joint_gains(self):
+        """Build kp/kd arrays aligned with policy joint indices.
+
+        User-defined groups are specified in motor_id space, but the runtime
+        buffers are indexed by policy_idx (0..17). We map via
+        config.joint2motor_idx.
+        """
+
+        group1 = {13, 7, 1, 16, 10, 4}
+        group2 = {18, 9, 3, 15, 11, 6}
+        group3 = {17, 8, 2, 14, 12, 5}
+
+        kp = np.zeros(18, dtype=np.float32)
+        kd = np.zeros(18, dtype=np.float32)
+
+        unknown_motor_ids = []
+        for policy_idx in range(18):
+            motor_id = int(self.config.joint2motor_idx[policy_idx])
+            if motor_id in group1:
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
+            elif motor_id in group2:
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
+            elif motor_id in group3:
+                kp[policy_idx] = 80.0
+                kd[policy_idx] = 1.3
+            else:
+                unknown_motor_ids.append(motor_id)
+
+        if unknown_motor_ids:
+            # 不阻塞运行，但提示配置/分组可能不完整
+            uniq = sorted(set(unknown_motor_ids))
+            print(f"[WARNING] Some motor_ids are not in any gain group: {uniq}")
+
+        return kp, kd
+
+    def _warm_up(self):
+        obs = torch.ones((1, int(self.config.num_obs)))
+        for _ in range(10):
+            _ = self.policy(obs)
+        print('Network has been warmed up.')
+
+
+    # 零力矩模式
+    def zero_torque_state(self):
+        print("Enter zero torque state.")
+        print("Waiting for the Y signal to default pos...")
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot enter zero_torque_state")
+
+        while self.gamepad.get_button_y() != 1:
+            create_zero_cmd(self.robot)
+            # 零速度
+            create_zero_torque_cmd(self.robot)
+            time.sleep(self.config.control_dt)
+
+    # 移动到默认位置
+    def move_to_default_pos(self):
+        print('Moving to default pos.')
+        # Safety: ensure spool speed motor (id19) is stopped while repositioning joints.
+        create_zero_torque_cmd(self.robot)
+        total_time = 2
+        num_step = int(total_time / self.config.control_dt)
+        default_pos = self.config.default_angles
+
+
+        init_dof_pos = np.zeros(18,dtype=np.float32)
+        # 读取当前 DOF 位置作为起点
+        # NOTE: RL_Real_PySOEM buffers are indexed by policy_idx (0..17).
+        # SDK internally maps policy_idx -> motor_id and applies direction/offset.
+        for i in range(18):
+            init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
+
+        for i in range(num_step):
+            alpha = i / num_step
+            
+            for j in range(18):
+                target_pos = default_pos[j]
+                q = init_dof_pos[j] * (1 - alpha) + target_pos * alpha
+                self.robot.motor_command_buffer.kp[j] = 150.0
+                self.robot.motor_command_buffer.kd[j] = 11.0
+                self.robot.motor_command_buffer.target_position[j] = q
+                self.robot.motor_command_buffer.target_velocity[j] = 0.0
+                self.robot.motor_command_buffer.feedforward_torque[j] = 0.0
+
+            # Keep stopping spool continuously (avoid stale speed cmd).
+            create_zero_torque_cmd(self.robot)
+
+            time.sleep(self.config.control_dt)
+
+    # 在默认位置等待，直到按下按钮A
+    def default_pos_state(self):
+        print("Enter default pos state.")
+        print("Waiting for the Button A signal...")
+
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot enter default_pos_state")
+
+        #init_dof_pos = np.zeros(18, dtype=np.float32)
+        while self.gamepad.get_button_a() != 1:
+            for i in range(18):
+                default_pos = self.config.default_angles[i]
+                self.robot.motor_command_buffer.kp[i] = 150.0
+                self.robot.motor_command_buffer.kd[i] = 11.0
+                self.robot.motor_command_buffer.target_position[i] = default_pos
+                self.robot.motor_command_buffer.target_velocity[i] = 0.0
+                self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
+                # init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
+                # print(init_dof_pos[i])
+
+            # Safety: keep spool speed at 0 while holding default pose.
+            create_zero_torque_cmd(self.robot)
+            time.sleep(self.config.control_dt)
+
+    # 打印关节初始位置
+    def print_initial_joint_positions(self):
+        print("Initial joint positions:")
+        for i in range(18):
+            motor_id = self.config.joint2motor_idx[i]
+            pos = self.robot.motor_state_buffer.position[i]
+            print(f"policy_idx {i:02d} (motor_id {motor_id:02d}), Position: {pos:.3f}")
+
+    # 打印imu数据
+    def print_imu_data(self):
+        vel = self.imu.get_linear_velocity()
+        grav = self.imu.get_gravity_acceleration()
+        if vel is not None and grav is not None:
+            for i in range(10):
+                print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
+                time.sleep(0.1)
+        else:
+            print("No IMU data available.")
+
+    def print_pitch_angle(self):
+        pitch_value = self.pitch_sensor.get_angle()
+        if pitch_value is not None:
+            print(f"Pitch Angle: {pitch_value:.3f} degrees")
+        else:
+            print("No pitch angle data available.")
+
+    def print_yaw_differ_angle(self):
+        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
+        if yaw_differ_value is not None:
+            print(self.spool_q[0])
+            print(self.yaw_sensor.get_angle())
+            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} rad")
+        else:
+            print("No yaw differ angle data available.")
+
+    def run(self):
+        if self.gamepad is None:
+            raise RuntimeError("Gamepad is not available; cannot run control loop")
+
+        self.counter += 1
+        observation_timestamp_ns = time.time_ns()
+        for i in range(18):
+            self.qj[i] = self.robot.motor_state_buffer.position[i]
+            self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
+
+        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
+        vel = self.imu.get_linear_velocity()
+        imu_data = self.imu.get_imu_data()
+        grav = self.imu.get_gravity_acceleration()
+
+        tension_value = self.tension_sensor.get_cable_tension()
+        tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
+        if not tension_sensor_valid:
+            tension_value = 0.0
+            
+        pitch_value = self.pitch_sensor.get_angle()
+        if pitch_value is None:
+            pitch_value = 0.0
+            
+        yaw_value = self.yaw_sensor.get_angle()
+        if yaw_value is None:
+            yaw_value = 0.0
+
+        # 计算yaw差值（arm相对body的yaw角度），作为观测输入提供给策略网络
+        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=yaw_value, offset_deg=self.config.offset_deg)
+        yaw_differ_value = 0
+        if imu_data is None or vel is None or grav is None:
+            # 如果没有 IMU 数据，使用全 0
+            linvel = np.zeros(3, dtype=np.float32)
+            ang_vel = np.zeros(3, dtype=np.float32)
+            gravity_orientation = np.array([0.0, 0.0, -1.0], dtype=np.float32)  # 假设重力向下
+            body_linear_acceleration = np.zeros(3, dtype=np.float32)
+            imu_valid = False
+        else:
+            linvel = np.asarray(vel, dtype=np.float32)
+            ang_vel = np.asarray(
+                [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']], dtype=np.float32
+            )
+            gravity_orientation = np.asarray(grav, dtype=np.float32)
+            body_linear_acceleration = np.asarray(
+                [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']], dtype=np.float32
+            )
+            imu_valid = bool(
+                np.all(np.isfinite(linvel))
+                and np.all(np.isfinite(ang_vel))
+                and np.all(np.isfinite(gravity_orientation))
+                and np.all(np.isfinite(body_linear_acceleration))
+            )
+
+            # Match sim2sim convention: gravity is a unit vector in body frame.
+            g_norm = float(np.linalg.norm(gravity_orientation))
+            if g_norm > 1e-6:
+                gravity_orientation = gravity_orientation / g_norm
+
+
+        cmd = self.gamepad.get_command()
+        
+        self.cmd[0] = np.float32(cmd[0])
+        self.cmd[1] = np.float32(cmd[1])
+        self.cmd[2] = np.float32(cmd[2])
+
+        qj_obs = self.qj.copy()
+        qj_obs = qj_obs - self.config.default_angles
+        dqj_obs = self.dqj.copy()
+        dqj_obs = dqj_obs 
+
+        self.obs[:3] = linvel * self.lin_vel_scale
+        self.obs[3:6] = ang_vel * self.ang_vel_scale
+        self.obs[6:9] = gravity_orientation
+        self.obs[9:27] = qj_obs * self.dof_pos_scale
+        self.obs[27:45] = dqj_obs * self.dof_vel_scale
+        self.obs[45:64] = self.action
+
+        # Command is stored in obs with scaling (match sim2sim layout).
+        # Avoid printing at control rate (50Hz) since it can disturb timing.
+        self.obs[64:67] = self.cmd * self.config.command_scale
+        
+        #self.obs[67] = np.float32(0)
+        self.obs[67] = np.float32(tension_value)
+        #self.obs[68] = np.float32(0)
+        self.obs[68] = np.float32(yaw_differ_value)
+        self.obs[69] = np.float32(pitch_value)
+
+        obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
+        self.action = self.policy(obs_tensor).detach().numpy().squeeze()
+
+        # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
+        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[18] = np.clip(self.action[18], 0.0, 2.0)
+
+        target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
+        # target_dof_pos = self.config.default_angles
+        
+        target_tension = self.action[18] * self.config.tension_action_scale
+
+        for i in range(18):
+            q = target_dof_pos[i]
+            #motor_id = int(self.config.joint2motor_idx[i])
+            
+            # Read actual motor position
+            actual_pos = self.robot.motor_state_buffer.position[i]
+            error = actual_pos - q
+
+            # Add feedforward torque for Group2 joints with correct sign
+            # Sign depends on motor_direction to ensure torque assists motion
+            # group2_motor_ids = {18, 9, 3, 15, 11, 6}
+            # if motor_id in group2_motor_ids:
+            #     # Get motor direction (+1 or -1)
+            #     motor_dir = self.config.motor_directions[i]
+            #     # Apply feedforward in the direction that assists gravity compensation
+            #     # If motor_dir is -1, we need to flip the sign
+            #     feedforward_torque = 1.5 * motor_dir
+            # else:
+            #     feedforward_torque = 0.0
+
+            # Log to CSV
+            self.log_writers[i].writerow([
+                self.counter * self.config.control_dt,  # time_step
+                self.counter,                            # counter
+                f'{q:.6f}',                              # target_pos
+                f'{actual_pos:.6f}',                     # actual_pos
+                f'{error:.6f}',                          # error
+                f'{self.action[i]:.6f}'                  # action
+            ])
+
+            self.robot.motor_command_buffer.kp[i] = float(self._kp_policy[i])
+            self.robot.motor_command_buffer.kd[i] = float(self._kd_policy[i])
+            self.robot.motor_command_buffer.target_position[i] = q
+            self.robot.motor_command_buffer.target_velocity[i] = 0.0
+            self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
+
+
+            # motor_id 仅用于对照打印
+            # motor_id = self.config.joint2motor_idx[i]
+            # print(f"policy_idx: [{i}] | motor_id: [{motor_id}] | q: [{q}]")
+            #print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
+            
+
+        # Spool speed command from reference/actual tension alignment.
+        # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
+        # Paper-style: feedforward uses IMU speed (already read above).
+        # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
+        spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
+            speed_input=float(cmd[0]),
+            #speed_input=float(linvel[0]),
+            yaw=float(yaw_differ_value),
+            tension_ref=float(target_tension),
+            tension_meas=float(tension_value),
+        )
+        self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
+        self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
+        spool_torque = self.robot.spool_state_buffer.torque[0]
+
+        # Write after u_k has been computed, while retaining the pre-action
+        # observation and the distinct u_{k-1}.  Filtering is causal only.
+        force_filtered_n, acceleration_filtered = self.pre_tension_logger.causal_filter(
+            float(tension_value), body_linear_acceleration
+        )
+        torque_limit = float(self.config.tsc_torque_limit)
+        saturation_flag = abs(float(spool_torque_cmd)) >= max(torque_limit - 1e-6, 0.0)
+        self.pre_tension_logger.write(
+            timestamp_ns=observation_timestamp_ns,
+            force_raw_n=float(tension_value),
+            force_filtered_n=force_filtered_n,
+            torque_actual_nm=float(spool_torque),
+            torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
+            torque_command_issued_nm=float(spool_torque_cmd),
+            motor_position_rad=float(self.spool_q[0]),
+            force_reference_n=float(target_tension),
+            velocity_command=self.cmd,
+            # Store the physical joint-position increment seen by the actuator,
+            # not the raw dimensionless policy output.
+            policy_action=self.action[:18] * float(self.config.action_scale),
+            joint_position=self.qj,
+            joint_velocity=self.dqj,
+            body_gravity_vector=gravity_orientation,
+            body_angular_velocity=ang_vel,
+            body_linear_acceleration_filtered=acceleration_filtered,
+            imu_valid=imu_valid,
+            tension_sensor_valid=tension_sensor_valid,
+            saturation_flag=saturation_flag,
+            emergency_flag=False,
+        )
+        self._previous_spool_torque_command_nm = float(spool_torque_cmd)
+        # Update real-time plots (best-effort; does nothing if disabled)
+        if getattr(self, "plotter", None) is not None:
+            self.plotter.update(
+                t_s=float(self.counter * self.config.control_dt),
+                tension_value=float(tension_value),
+                target_tension=float(target_tension),
+                yaw_differ_value=float(yaw_differ_value),
+                imu_vx=float(cmd[0]),
+                spool_torque_cmd=float(spool_torque_cmd),
+                spool_torque_buffer=float(spool_torque),
+            )
+        time.sleep(self.config.control_dt)
+
+
+if __name__ == "__main__":
+
+    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod_tethered.yaml"
+    config = Config(config_path)
+
+    # ChannelFactoryInitialize(0, args.net)
+
+    controller = Controller(config)
+
+    time.sleep(1) # 等待系统稳定
+    controller.print_initial_joint_positions()
+    controller.print_imu_data()
+    controller.print_pitch_angle()
+
+    controller.print_yaw_differ_angle()
+
+    controller.zero_torque_state()
+    controller.move_to_default_pos()
+    controller.default_pos_state()
+    print("Start main control loop. Press LB to exit.")
+
+    while True:
+        try:
+            
+            controller.run()
+            if controller.gamepad.get_button_lb() == 1:
+                break
+
+            if controller.gamepad.get_button_y() == 1:
+                # Safety: stop spool speed motor immediately on Y.
+                create_zero_torque_cmd(controller.robot)
+                controller.move_to_default_pos()
+                # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
+                controller.default_pos_state()
+                create_zero_torque_cmd(controller.robot)
+            
+        except KeyboardInterrupt:
+            break
+
+
+    if getattr(controller, "gamepad", None) is not None:
+        try:
+            controller.gamepad.stop()
+        except Exception:
+            pass
+
+    # The learning trajectory ends with the policy loop; close it before the
+    # potentially long damping phase so the CSV header and final buffered rows
+    # are guaranteed to be on disk.
+    if getattr(controller, "pre_tension_logger", None) is not None:
+        controller.pre_tension_logger.close()
+
+    print("Entering damping mode to lower the robot safely. Press Ctrl+C to exit completely.")
+    # Keep sending damping command continuously to keep the robot in damping mode
+    try:
+        while True:
+            create_damping_cmd(controller.robot)
+            create_zero_torque_cmd(controller.robot)
+            time.sleep(config.control_dt)
+    except KeyboardInterrupt:
+        pass
+        
+    print('Exit')
