@@ -9,7 +9,7 @@ validates it again).  A vector ``name`` of length D is stored as D scalar column
 Required scalar columns::
 
     timestamp_ns, trajectory_id,
-    force_filtered_n, torque_actual_nm,
+    force_raw_n, torque_actual_nm,
     torque_command_prev_nm, torque_command_issued_nm,
     motor_position_rad, force_reference_n,
     saturation_flag, emergency_flag, data_valid_flag
@@ -23,17 +23,17 @@ Required vector columns (default dimensions shown)::
     joint_velocity_0 ... joint_velocity_17                        (18)
     body_gravity_vector_0 ... body_gravity_vector_2               (3)
     body_angular_velocity_0 ... body_angular_velocity_2           (3)
-    body_linear_acceleration_filtered_0 ... _2                    (3)
+    body_linear_acceleration_0 ... _2                             (3)
 
-``force_raw_n`` and optional drive fields may be present but are not used by this
-first-stage model.  Missing/NaN required values make a row invalid; windows that
-contain invalid, emergency, or saturated rows are rejected.  A training window
-never crosses a trajectory boundary.
+Optional drive fields may be present but are not used by this first-stage model.
+Missing/NaN required values make a row invalid; windows that contain invalid,
+emergency, or saturated rows are rejected.  A training window never crosses a
+trajectory boundary.
 
 Strict timing of each CSV row k::
 
     torque_command_prev_nm   = u_{k-1}, already executed in [t_{k-1}, t_k)
-    force_filtered_n         = F_k, measured at t_k
+    force_raw_n              = F_k, measured at t_k
     torque_command_issued_nm = u_k, computed after observing F_k
 
 Thus a sample centered at k contains history [o_{k-N+1},...,o_k], future action
@@ -177,7 +177,7 @@ class FeatureLayout:
 
     def __init__(self, cfg: DataConfig) -> None:
         groups: Dict[str, List[str]] = {
-            "tether": ["force_filtered_n"],
+            "tether": ["force_raw_n"],
             "body": _vector_columns("velocity_command", cfg.velocity_dim)
                     + _vector_columns("body_gravity_vector", 3)
                     + _vector_columns("body_angular_velocity", 3),
@@ -189,7 +189,7 @@ class FeatureLayout:
         groups["tether"] += ["torque_command_prev_nm",
                              "motor_position_relative", "force_reference_n"]
         if cfg.use_body_linear_acceleration:
-            groups["body"] += _vector_columns("body_linear_acceleration_filtered", 3)
+            groups["body"] += _vector_columns("body_linear_acceleration", 3)
         if cfg.use_policy_action:
             groups["leg"] += _vector_columns("policy_action", cfg.policy_action_dim)
         self.groups = groups
@@ -204,7 +204,7 @@ class FeatureLayout:
 
 class CsvTrajectories:
     REQUIRED_SCALARS = [
-        "timestamp_ns", "trajectory_id", "force_filtered_n", "torque_actual_nm",
+        "timestamp_ns", "trajectory_id", "force_raw_n", "torque_actual_nm",
         "torque_command_prev_nm", "torque_command_issued_nm", "motor_position_rad",
         "force_reference_n",
         "saturation_flag", "emergency_flag", "data_valid_flag",
@@ -219,7 +219,15 @@ class CsvTrajectories:
         required.update(_vector_columns("joint_position", cfg.joint_dim))
         with path.open("r", newline="") as f:
             reader = csv.DictReader(f)
-            missing = sorted(required - set(reader.fieldnames or []))
+            present = set(reader.fieldnames or [])
+            aliases = {
+                f"body_linear_acceleration_{i}": f"body_linear_acceleration_filtered_{i}"
+                for i in range(3)
+            }
+            missing = sorted(
+                key for key in required
+                if key not in present and aliases.get(key) not in present
+            )
             if missing:
                 raise ValueError(f"CSV missing {len(missing)} required columns: {missing}")
             rows = list(reader)
@@ -229,7 +237,10 @@ class CsvTrajectories:
         numeric = sorted(required - {"trajectory_id"})
         for line, row in enumerate(rows, 2):
             try:
-                parsed = {key: float(row[key]) for key in numeric}
+                parsed = {}
+                for key in numeric:
+                    source = key if key in row else aliases.get(key, key)
+                    parsed[key] = float(row[source])
                 parsed["timestamp_ns"] = int(float(row["timestamp_ns"]))
                 parsed["trajectory_id"] = row["trajectory_id"]
             except (ValueError, TypeError) as exc:
@@ -318,9 +329,9 @@ class WindowBuilder:
         rows, c = self.data.trajectories[tid], self.cfg
         actions = np.array([rows[k+h]["torque_command_issued_nm"]
                             for h in range(c.horizon)], np.float32)[:, None]
-        target = np.array([rows[k+h+1]["force_filtered_n"]
+        target = np.array([rows[k+h+1]["force_raw_n"]
                            for h in range(c.horizon)], np.float32)
-        current = float(rows[k]["force_filtered_n"])
+        current = float(rows[k]["force_raw_n"])
         q_len = max(c.action_delay_steps - 1, 0)
         queue = np.array([rows[k-q_len+1+i]["torque_command_prev_nm"]
                           for i in range(q_len)], np.float32)[:, None]

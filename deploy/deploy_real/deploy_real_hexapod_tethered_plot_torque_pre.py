@@ -60,38 +60,25 @@ class OnlineTensionPredictor:
                 f"preview={len(self.preview_names)}; expected 71 and 22"
             )
         self.history = deque(maxlen=self.data_cfg.history_len)
-        self._force_filtered = None
-        self._acceleration_filtered = None
 
     @property
     def ready(self) -> bool:
         return len(self.history) == self.data_cfg.history_len
-
-    def causal_filter(self, force_n: float, acceleration) -> tuple:
-        # These alphas must match data collection. They are preprocessing, not
-        # trainable model parameters.
-        alpha = 0.2
-        acceleration = np.asarray(acceleration, np.float32).reshape(3)
-        if self._force_filtered is None:
-            self._force_filtered = float(force_n)
-            self._acceleration_filtered = acceleration.copy()
-        else:
-            self._force_filtered = alpha * float(force_n) + (1.0-alpha) * self._force_filtered
-            self._acceleration_filtered = alpha * acceleration + (1.0-alpha) * self._acceleration_filtered
-        return float(self._force_filtered), self._acceleration_filtered.copy()
 
     @staticmethod
     def _put_vector(frame, prefix: str, values) -> None:
         for i, value in enumerate(np.asarray(values, np.float32).reshape(-1)):
             frame[f"{prefix}_{i}"] = float(value)
 
-    def append_observation(self, *, force_filtered_n: float, torque_actual_nm: float,
+    def append_observation(self, *, force_n: float, torque_actual_nm: float,
                            torque_command_prev_nm: float, motor_position_rad: float,
                            force_reference_n: float, velocity_command,
                            scaled_policy_action, joint_position, joint_velocity,
                            gravity, angular_velocity, linear_acceleration) -> None:
         frame = {
-            "force_filtered_n": float(force_filtered_n),
+            "force_raw_n": float(force_n),
+            # Compatibility for checkpoints trained before the raw-force schema.
+            "force_filtered_n": float(force_n),
             "torque_actual_nm": float(torque_actual_nm),
             "torque_command_prev_nm": float(torque_command_prev_nm),
             "motor_position_rad": float(motor_position_rad),
@@ -103,6 +90,8 @@ class OnlineTensionPredictor:
         self._put_vector(frame, "joint_velocity", joint_velocity)
         self._put_vector(frame, "body_gravity_vector", gravity)
         self._put_vector(frame, "body_angular_velocity", angular_velocity)
+        self._put_vector(frame, "body_linear_acceleration", linear_acceleration)
+        # Compatibility for checkpoints trained before the raw-acceleration schema.
         self._put_vector(frame, "body_linear_acceleration_filtered", linear_acceleration)
         self.history.append(frame)
 
@@ -719,11 +708,8 @@ class Controller:
         target_tension = self.action[18] * self.config.tension_action_scale
         scaled_policy_action = self.action[:18] * float(self.config.action_scale)
 
-        force_filtered_n, acceleration_filtered = self.tension_predictor.causal_filter(
-            float(tension_value), body_linear_acceleration
-        )
         self.tension_predictor.append_observation(
-            force_filtered_n=force_filtered_n,
+            force_n=float(tension_value),
             torque_actual_nm=float(self.robot.spool_state_buffer.torque[0]),
             torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
             motor_position_rad=float(self.spool_q[0]),
@@ -734,7 +720,7 @@ class Controller:
             joint_velocity=self.dqj,
             gravity=gravity_orientation,
             angular_velocity=ang_vel,
-            linear_acceleration=acceleration_filtered,
+            linear_acceleration=body_linear_acceleration,
         )
 
         for i in range(18):

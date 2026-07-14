@@ -32,7 +32,7 @@ class TensionTrainingCsvLogger:
     """Write causally indexed rows consumed by ``pre_tension.py``.
 
     Timing of every row k is intentionally explicit:
-      * ``force_filtered_n`` and robot state are observed at t_k;
+      * ``force_raw_n`` and robot state are observed at t_k;
       * ``torque_command_prev_nm`` was executed before t_k (u_{k-1});
       * ``torque_command_issued_nm`` is computed after that observation (u_k).
 
@@ -41,22 +41,18 @@ class TensionTrainingCsvLogger:
 
     This script currently runs at Config.control_dt=0.02 s (50 Hz), so these
     rows describe the actual 50 Hz loop, not an invented 250 Hz stream.
+    Sensor filtering should happen inside the sensor driver if needed; this
+    logger records the values returned to the control loop.
     """
 
     def __init__(self, directory: str, trajectory_id: str, control_dt: float,
-                 force_lpf_alpha: float = 0.2, acceleration_lpf_alpha: float = 0.2,
                  flush_every_n: int = 50) -> None:
         os.makedirs(directory, exist_ok=True)
         self.path = os.path.join(directory, f"{trajectory_id}.csv")
         self.trajectory_id = trajectory_id
         self.control_dt = float(control_dt)
-        # 设置滤波系数
-        self.force_lpf_alpha = float(np.clip(force_lpf_alpha, 0.0, 1.0))
-        self.acceleration_lpf_alpha = float(np.clip(acceleration_lpf_alpha, 0.0, 1.0))
         
         self.flush_every_n = max(int(flush_every_n), 1)
-        self._force_filtered = None
-        self._acceleration_filtered = None
         self._rows = 0
         self._file = open(self.path, "w", newline="", buffering=1024 * 1024)
         self._fieldnames = self._make_fieldnames()
@@ -74,7 +70,7 @@ class TensionTrainingCsvLogger:
     def _make_fieldnames(cls):
         scalar = [
             "timestamp_ns", "trajectory_id", "sample_index", "control_dt_s",
-            "force_raw_n", "force_filtered_n", "torque_actual_nm",
+            "force_raw_n", "torque_actual_nm",
             "torque_command_prev_nm", "torque_command_issued_nm",
             "motor_position_rad", "force_reference_n",
             "imu_valid", "tension_sensor_valid",
@@ -85,7 +81,7 @@ class TensionTrainingCsvLogger:
             ("velocity_command", 3), ("policy_action", 18),
             ("joint_position", 18), ("joint_velocity", 18),
             ("body_gravity_vector", 3), ("body_angular_velocity", 3),
-            ("body_linear_acceleration_filtered", 3),
+            ("body_linear_acceleration", 3),
         ):
             vectors.extend(cls._names(name, size))
         return scalar + vectors
@@ -98,31 +94,12 @@ class TensionTrainingCsvLogger:
         for i, item in enumerate(array):
             row[f"{prefix}_{i}"] = float(item)
 
-    # 定义滤波函数，滤波拉力和加速度
-    def causal_filter(self, force_raw_n: float, acceleration_body) -> tuple:
-        force = float(force_raw_n)
-        acceleration = np.asarray(acceleration_body, dtype=np.float32).reshape(3)
-        if self._force_filtered is None:
-            self._force_filtered = force
-        else:
-            a = self.force_lpf_alpha
-            self._force_filtered = a * force + (1.0 - a) * self._force_filtered
-        if self._acceleration_filtered is None:
-            self._acceleration_filtered = acceleration.copy()
-        else:
-            a = self.acceleration_lpf_alpha
-            self._acceleration_filtered = (
-                a * acceleration + (1.0 - a) * self._acceleration_filtered
-            )
-        return float(self._force_filtered), self._acceleration_filtered.copy()
-
     def write(self, *, timestamp_ns: int, force_raw_n: float,
-              force_filtered_n: float, torque_actual_nm: float,
-              torque_command_prev_nm: float, torque_command_issued_nm: float,
-              motor_position_rad: float, force_reference_n: float,
-              velocity_command, policy_action, joint_position, joint_velocity,
-              body_gravity_vector,
-              body_angular_velocity, body_linear_acceleration_filtered,
+              torque_actual_nm: float, torque_command_prev_nm: float,
+              torque_command_issued_nm: float, motor_position_rad: float,
+              force_reference_n: float, velocity_command, policy_action,
+              joint_position, joint_velocity, body_gravity_vector,
+              body_angular_velocity, body_linear_acceleration,
               imu_valid: bool, tension_sensor_valid: bool,
               saturation_flag: bool, emergency_flag: bool = False) -> None:
         q = np.asarray(joint_position, dtype=np.float32).reshape(18)
@@ -132,7 +109,6 @@ class TensionTrainingCsvLogger:
             "timestamp_ns": int(timestamp_ns), "trajectory_id": self.trajectory_id,
             "sample_index": self._rows, "control_dt_s": self.control_dt,
             "force_raw_n": float(force_raw_n),
-            "force_filtered_n": float(force_filtered_n),
             "torque_actual_nm": float(torque_actual_nm),
             "torque_command_prev_nm": float(torque_command_prev_nm),
             "torque_command_issued_nm": float(torque_command_issued_nm),
@@ -151,8 +127,8 @@ class TensionTrainingCsvLogger:
         self._put_vector(row, "joint_velocity", joint_velocity, 18)
         self._put_vector(row, "body_gravity_vector", body_gravity_vector, 3)
         self._put_vector(row, "body_angular_velocity", body_angular_velocity, 3)
-        self._put_vector(row, "body_linear_acceleration_filtered",
-                         body_linear_acceleration_filtered, 3)
+        self._put_vector(row, "body_linear_acceleration",
+                         body_linear_acceleration, 3)
         # 写入数据
         self._writer.writerow(row)
         self._rows += 1
@@ -410,8 +386,6 @@ class Controller:
             directory=pre_data_dir,
             trajectory_id=self.trajectory_id,
             control_dt=float(self.config.control_dt),
-            force_lpf_alpha=0.2,
-            acceleration_lpf_alpha=0.2,
             flush_every_n=50,
         )
         # This is u_{k-1} at the next call to run().  It is deliberately not
@@ -831,16 +805,12 @@ class Controller:
         spool_torque = self.robot.spool_state_buffer.torque[0]
 
         # Write after u_k has been computed, while retaining the pre-action
-        # observation and the distinct u_{k-1}.  Filtering is causal only.
-        force_filtered_n, acceleration_filtered = self.pre_tension_logger.causal_filter(
-            float(tension_value), body_linear_acceleration
-        )
+        # observation and the distinct u_{k-1}.
         torque_limit = float(self.config.tsc_torque_limit)
         saturation_flag = abs(float(spool_torque_cmd)) >= max(torque_limit - 1e-6, 0.0)
         self.pre_tension_logger.write(
             timestamp_ns=observation_timestamp_ns,
             force_raw_n=float(tension_value),
-            force_filtered_n=force_filtered_n,
             # 实际力矩
             torque_actual_nm=spool_torque_actual_pre_action,
             # 上一帧的期望力矩
@@ -857,7 +827,7 @@ class Controller:
             joint_velocity=self.dqj,
             body_gravity_vector=gravity_orientation,
             body_angular_velocity=ang_vel,
-            body_linear_acceleration_filtered=acceleration_filtered,
+            body_linear_acceleration=body_linear_acceleration,
             imu_valid=imu_valid,
             tension_sensor_valid=tension_sensor_valid,
             saturation_flag=saturation_flag,

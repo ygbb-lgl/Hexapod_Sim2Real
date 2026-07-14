@@ -24,7 +24,7 @@ VECTOR_DIMS: Sequence[Tuple[str, int]] = (
     ("joint_velocity", 18),
     ("body_gravity_vector", 3),
     ("body_angular_velocity", 3),
-    ("body_linear_acceleration_filtered", 3),
+    ("body_linear_acceleration", 3),
 )
 SCALAR_FIELDS = [
     "timestamp_ns",
@@ -32,7 +32,6 @@ SCALAR_FIELDS = [
     "sample_index",
     "control_dt_s",
     "force_raw_n",
-    "force_filtered_n",
     "torque_actual_nm",
     "torque_command_prev_nm",
     "torque_command_issued_nm",
@@ -99,14 +98,11 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
     timestamp_origin_ns = 10_000_000_000_000 + scenario * 100_000_000_000
 
     force_raw = 82.0 + 2.0 * scenario
-    force_filtered = force_raw
     torque_actual = 8.0
     previous_command = 8.0
     spool_position = 0.08 * scenario
     spool_velocity = 0.0
     previous_velocity_command = [0.0, 0.0, 0.0]
-    acceleration_filtered = [0.0, 0.0, 0.0]
-    filter_alpha = 0.2
 
     with path.open("w", newline="") as output_file:
         writer = csv.DictWriter(output_file, fieldnames=FIELDNAMES)
@@ -120,11 +116,6 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
                 for index in range(3)
             ]
             previous_velocity_command = velocity_command
-            for index in range(3):
-                acceleration_filtered[index] = (
-                    filter_alpha * acceleration[index]
-                    + (1.0 - filter_alpha) * acceleration_filtered[index]
-                )
 
             speed = math.hypot(velocity_command[0], velocity_command[1])
             gait_hz = 0.65 + 0.75 * min(speed, 1.0)
@@ -170,13 +161,12 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
                 + 2.45 * max(torque_actual, -5.0)
                 + 15.0 * speed
                 + 2.8 * leg_activity
-                + 3.5 * abs(acceleration_filtered[0])
+                + 3.5 * abs(acceleration[0])
             )
             force_raw += 0.16 * (force_equilibrium - force_raw)
             force_raw += 0.35 * math.sin(1.7 * t_s + 0.6 * scenario)
             force_raw += rng.gauss(0.0, 0.22)
             force_raw = max(force_raw, 2.0)
-            force_filtered = filter_alpha * force_raw + (1.0 - filter_alpha) * force_filtered
 
             force_reference = force_reference_for(scenario, t_s, velocity_command)
             excitation = (
@@ -186,7 +176,7 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
             )
             torque_command = (
                 7.5
-                + 0.19 * (force_reference - force_filtered)
+                + 0.19 * (force_reference - force_raw)
                 + 4.0 * abs(velocity_command[0])
                 + excitation
             )
@@ -198,7 +188,6 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
                 "sample_index": sample_index,
                 "control_dt_s": DT_S,
                 "force_raw_n": f"{force_raw:.8f}",
-                "force_filtered_n": f"{force_filtered:.8f}",
                 "torque_actual_nm": f"{torque_actual:.8f}",
                 "torque_command_prev_nm": f"{previous_command:.8f}",
                 "torque_command_issued_nm": f"{torque_command:.8f}",
@@ -216,7 +205,7 @@ def generate_trajectory(path: Path, scenario: int, rows: int, seed: int) -> None
             put_vector(row, "joint_velocity", joint_velocity)
             put_vector(row, "body_gravity_vector", gravity)
             put_vector(row, "body_angular_velocity", angular_velocity)
-            put_vector(row, "body_linear_acceleration_filtered", acceleration_filtered)
+            put_vector(row, "body_linear_acceleration", acceleration)
             writer.writerow(row)
             previous_command = torque_command
 
