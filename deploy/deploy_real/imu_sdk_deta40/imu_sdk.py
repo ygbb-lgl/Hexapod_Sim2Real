@@ -17,6 +17,10 @@ IMU_LEN = 0x38  # 56 bytes
 AHRS_LEN = 0x30  # 48 bytes
 INSGPS_LEN = 0x48  # 72 bytes
 
+# First-order low-pass filter applied to IMU acceleration and velocity outputs.
+# filtered = alpha * current + (1 - alpha) * previous_filtered
+IMU_LPF_ALPHA = 0.8
+
 
 # ================= CRC Tables (from official C++ crc_table.cpp) =================
 CRC8Table = [
@@ -163,15 +167,19 @@ class IMUSDK:
         self._quat_urdf: Tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
         self._gyro_urdf = [0.0, 0.0, 0.0]
         self._acc_urdf = [0.0, 0.0, 0.0]
+        self._filtered_gyro_urdf = None
+        self._filtered_acc_urdf = None
 
         self._gravity_vec = [0.0, 0.0, -1.0]
 
         # Velocity sources
         self._vel_from_insgps = [0.0, 0.0, 0.0]
+        self._filtered_vel_from_insgps = None
         self._last_insgps_t = 0.0
 
         # Fallback velocity estimation (integration)
         self._estimated_velocity = [0.0, 0.0, 0.0]
+        self._filtered_estimated_velocity = None
         self._last_acc = [0.0, 0.0, 0.0]
         self._last_vel_update_t = time.monotonic()
 
@@ -349,7 +357,10 @@ class IMUSDK:
                 vx = float(self._raw_insgps["body_vel_x"])
                 vy = -float(self._raw_insgps["body_vel_y"])
                 vz = -float(self._raw_insgps["body_vel_z"])
-                self._vel_from_insgps = [vx, vy, vz]
+                self._vel_from_insgps = self._lpf_vector(
+                    [vx, vy, vz],
+                    "_filtered_vel_from_insgps",
+                )
                 self._last_insgps_t = time.monotonic()
                 self.valid_insgps = True
 
@@ -358,6 +369,20 @@ class IMUSDK:
                 self._update_urdf_state_locked()
 
     # -------------------- Internal: math --------------------
+    def _lpf_vector(self, values, state_attr: str):
+        current = [float(v) for v in values]
+        previous = getattr(self, state_attr)
+        if previous is None:
+            filtered = current
+        else:
+            alpha = float(IMU_LPF_ALPHA)
+            filtered = [
+                alpha * current[i] + (1.0 - alpha) * previous[i]
+                for i in range(3)
+            ]
+        setattr(self, state_attr, filtered)
+        return list(filtered)
+
     def _update_urdf_state_locked(self) -> None:
         # Coordinate transform IMU->URDF
         qw = float(self._raw_ahrs["qw"])
@@ -369,12 +394,12 @@ class IMUSDK:
         gx = float(self._raw_imu["gyro_x"])
         gy = -float(self._raw_imu["gyro_y"])
         gz = -float(self._raw_imu["gyro_z"])
-        self._gyro_urdf = [gx, gy, gz]
+        self._gyro_urdf = self._lpf_vector([gx, gy, gz], "_filtered_gyro_urdf")
 
         ax = float(self._raw_imu["acc_x"])
         ay = -float(self._raw_imu["acc_y"])
         az = -float(self._raw_imu["acc_z"])
-        self._acc_urdf = [ax, ay, az]
+        self._acc_urdf = self._lpf_vector([ax, ay, az], "_filtered_acc_urdf")
 
         self._gravity_vec = list(self._compute_gravity_vec_for_obs(self._quat_urdf))
 
@@ -422,9 +447,11 @@ class IMUSDK:
         if acc_norm < 0.5 and gyro_norm < 0.1:
             decay = 0.7
 
-        self._estimated_velocity[0] = decay * self._estimated_velocity[0] + 0.5 * (ax_comp + self._last_acc[0]) * dt
-        self._estimated_velocity[1] = decay * self._estimated_velocity[1] + 0.5 * (ay_comp + self._last_acc[1]) * dt
-        self._estimated_velocity[2] = decay * self._estimated_velocity[2] + 0.5 * (az_comp + self._last_acc[2]) * dt
+        estimated_velocity = [
+            decay * self._estimated_velocity[0] + 0.5 * (ax_comp + self._last_acc[0]) * dt,
+            decay * self._estimated_velocity[1] + 0.5 * (ay_comp + self._last_acc[1]) * dt,
+            decay * self._estimated_velocity[2] + 0.5 * (az_comp + self._last_acc[2]) * dt,
+        ]
 
         self._last_acc[0] = ax_comp
         self._last_acc[1] = ay_comp
@@ -432,7 +459,11 @@ class IMUSDK:
 
         max_vel = 2.0
         for i in range(3):
-            if self._estimated_velocity[i] > max_vel:
-                self._estimated_velocity[i] = max_vel
-            elif self._estimated_velocity[i] < -max_vel:
-                self._estimated_velocity[i] = -max_vel
+            if estimated_velocity[i] > max_vel:
+                estimated_velocity[i] = max_vel
+            elif estimated_velocity[i] < -max_vel:
+                estimated_velocity[i] = -max_vel
+        self._estimated_velocity = self._lpf_vector(
+            estimated_velocity,
+            "_filtered_estimated_velocity",
+        )

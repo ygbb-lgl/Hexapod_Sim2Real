@@ -38,6 +38,10 @@ ROPE_TURN_ANGLE_DEG = 111.0
 # Keep as zeros if you already handle zeroing elsewhere.
 FORCE_BIAS_XYZ = (0.0, 0.0, 0.0)
 
+# First-order low-pass filter applied after tension estimation.
+# filtered = alpha * current + (1 - alpha) * previous_filtered
+TENSION_LPF_ALPHA = 0.8
+
 
 CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB0"  # 按实际设备修改，例如 /dev/ttyACM0
 
@@ -50,18 +54,36 @@ class SensorDataParser:
         self.buffer = bytearray()
         self._lock = threading.Lock()
         self.last_cable_tension: Optional[float] = None
+        self.last_cable_tension_raw: Optional[float] = None
         self.last_force_xyz: Optional[tuple[float, float, float]] = None
         self.last_update_time: Optional[float] = None
+        self._filtered_cable_tension: Optional[float] = None
 
     def get_cable_tension(self) -> Optional[float]:
-        """返回最近一次解析得到的张力（未解析到有效帧时为 None）。"""
+        """返回最近一次解析得到的滤波张力（未解析到有效帧时为 None）。"""
         with self._lock:
             return self.last_cable_tension
+
+    def get_cable_tension_raw(self) -> Optional[float]:
+        """返回最近一次解析得到的未滤波张力（未解析到有效帧时为 None）。"""
+        with self._lock:
+            return self.last_cable_tension_raw
 
     def get_force_xyz(self) -> Optional[tuple[float, float, float]]:
         """返回最近一次解析到的三轴力 (Fx,Fy,Fz)。"""
         with self._lock:
             return self.last_force_xyz
+
+    def _filter_tension(self, cable_tension: float) -> float:
+        if self._filtered_cable_tension is None:
+            self._filtered_cable_tension = float(cable_tension)
+        else:
+            alpha = float(TENSION_LPF_ALPHA)
+            self._filtered_cable_tension = (
+                alpha * float(cable_tension)
+                + (1.0 - alpha) * self._filtered_cable_tension
+            )
+        return float(self._filtered_cable_tension)
 
     @staticmethod
     def _estimate_tension_from_force(fx: float, fy: float, fz: float) -> float:
@@ -131,8 +153,10 @@ class SensorDataParser:
                 try:
                     fx, fy, fz, mx, my, mz = struct.unpack('<ffffff', frame[6:30])
                     cable_tension = self._estimate_tension_from_force(fx, fy, fz)
+                    cable_tension_filtered = self._filter_tension(cable_tension)
                     with self._lock:
-                        self.last_cable_tension = float(cable_tension)
+                        self.last_cable_tension_raw = float(cable_tension)
+                        self.last_cable_tension = float(cable_tension_filtered)
                         self.last_force_xyz = (float(fx), float(fy), float(fz))
                         self.last_update_time = time.time()
                     # print(f"M8218 = {fx:10.6f}, {fy:10.6f}, {fz:10.6f},   {mx:10.6f}, {my:10.6f}, {mz:10.6f}")
@@ -224,7 +248,11 @@ class CableTensionSensor:
             time.sleep(0.01) 
 
     def get_cable_tension(self) -> Optional[float]:
-        return self.parser.get_cable_tension()
+        #return self.parser.get_cable_tension()
+        return self.parser.get_cable_tension_raw()
+    
+    def get_cable_tension_raw(self) -> Optional[float]:
+        return self.parser.get_cable_tension_raw()
 
     def get_force_xyz(self) -> Optional[tuple[float, float, float]]:
         return self.parser.get_force_xyz()
@@ -247,17 +275,17 @@ if __name__ == "__main__":
             while True:
                 latest = sensor.get_cable_tension()
                 if latest is not None:
+                    raw = sensor.get_cable_tension_raw()
                     fxyz = sensor.get_force_xyz()
                     if fxyz is None:
-                        print(f"cable_tension = {latest:.6f}")
+                        print(f"cable_tension = {latest:.6f} | raw = {raw:.6f}")
                     else:
                         fx, fy, fz = fxyz
-                        print(f"cable_tension = {latest:.6f} | Fx,Fy,Fz = {fx:.3f},{fy:.3f},{fz:.3f}")
+                        print(f"cable_tension = {latest:.6f} | raw = {raw:.6f} | Fx,Fy,Fz = {fx:.3f},{fy:.3f},{fz:.3f}")
                 time.sleep(0.1)  # 模拟主控制循环提取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")
             sensor.stop()
             print("程序已退出。")
-
 
 
