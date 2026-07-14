@@ -27,7 +27,7 @@ import config_hexapod_tethered
 
 from config_hexapod_tethered import Config
 
-
+# 记录数据
 class TensionTrainingCsvLogger:
     """Write causally indexed rows consumed by ``pre_tension.py``.
 
@@ -50,14 +50,17 @@ class TensionTrainingCsvLogger:
         self.path = os.path.join(directory, f"{trajectory_id}.csv")
         self.trajectory_id = trajectory_id
         self.control_dt = float(control_dt)
+        # 设置滤波系数
         self.force_lpf_alpha = float(np.clip(force_lpf_alpha, 0.0, 1.0))
         self.acceleration_lpf_alpha = float(np.clip(acceleration_lpf_alpha, 0.0, 1.0))
+        
         self.flush_every_n = max(int(flush_every_n), 1)
         self._force_filtered = None
         self._acceleration_filtered = None
         self._rows = 0
         self._file = open(self.path, "w", newline="", buffering=1024 * 1024)
         self._fieldnames = self._make_fieldnames()
+        # 写入表头
         self._writer = csv.DictWriter(self._file, fieldnames=self._fieldnames)
         self._writer.writeheader()
         print(f"[PreTensionCSV] logging enabled: {self.path}")
@@ -66,6 +69,7 @@ class TensionTrainingCsvLogger:
     def _names(prefix: str, size: int):
         return [f"{prefix}_{i}" for i in range(size)]
 
+    # 创建列名（表头名字，scalar是标量，vector是向量）
     @classmethod
     def _make_fieldnames(cls):
         scalar = [
@@ -94,6 +98,7 @@ class TensionTrainingCsvLogger:
         for i, item in enumerate(array):
             row[f"{prefix}_{i}"] = float(item)
 
+    # 定义滤波函数，滤波拉力和加速度
     def causal_filter(self, force_raw_n: float, acceleration_body) -> tuple:
         force = float(force_raw_n)
         acceleration = np.asarray(acceleration_body, dtype=np.float32).reshape(3)
@@ -133,6 +138,7 @@ class TensionTrainingCsvLogger:
             "torque_command_issued_nm": float(torque_command_issued_nm),
             "motor_position_rad": float(motor_position_rad),
             "force_reference_n": float(force_reference_n),
+            # 记录数值是否有效，没啥用
             "imu_valid": int(imu_valid),
             "tension_sensor_valid": int(tension_sensor_valid),
             "saturation_flag": int(saturation_flag),
@@ -147,6 +153,7 @@ class TensionTrainingCsvLogger:
         self._put_vector(row, "body_angular_velocity", body_angular_velocity, 3)
         self._put_vector(row, "body_linear_acceleration_filtered",
                          body_linear_acceleration_filtered, 3)
+        # 写入数据
         self._writer.writerow(row)
         self._rows += 1
         if self._rows % self.flush_every_n == 0:
@@ -159,10 +166,11 @@ class TensionTrainingCsvLogger:
             self._file = None
 
 
+# 实时现实画面
 class RealTimePlotter:
     def __init__(
         self,
-        history_seconds: float = 20.0,
+        history_seconds: float = 60.0,
         control_dt: float = 0.02,
         plot_every_n: int = 5,
         enabled: bool = True,
@@ -228,6 +236,7 @@ class RealTimePlotter:
             self._plt = plt
             self._plt.ion()
 
+            # 创建4行1列的子图
             self._fig, self._axs = self._plt.subplots(
                 4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
             )
@@ -330,6 +339,7 @@ class RealTimePlotter:
         if t.size < 2:
             return
 
+        # 真正的图像数据传入接口
         self._ln_tension_meas.set_data(t, np.asarray(self._tension_meas, dtype=np.float32))
         self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
         self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
@@ -411,7 +421,7 @@ class Controller:
         # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
         # Plot refresh is decimated to reduce impact on control timing.
         self.plotter = RealTimePlotter(
-            history_seconds=20.0,
+            history_seconds=60.0,
             control_dt=float(self.config.control_dt),
             plot_every_n=5,
             enabled=True,
@@ -672,7 +682,7 @@ class Controller:
         self.spool_q[0] = self.robot.spool_state_buffer.position[0]
         # Snapshot tau_actual_k before computing/writing the new command u_k.
         # Do not read this shared driver buffer again for the same CSV row.
-        spool_torque_actual_pre_action = float(self.robot.spool_state_buffer.torque[0])
+        spool_torque_actual_pre_action = float(2.1 * self.robot.spool_state_buffer.torque[0])
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
@@ -831,12 +841,15 @@ class Controller:
             timestamp_ns=observation_timestamp_ns,
             force_raw_n=float(tension_value),
             force_filtered_n=force_filtered_n,
+            # 实际力矩
             torque_actual_nm=spool_torque_actual_pre_action,
+            # 上一帧的期望力矩
             torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
+            # 期望力矩
             torque_command_issued_nm=float(spool_torque_cmd),
             motor_position_rad=float(self.spool_q[0]),
-            force_reference_n=float(target_tension),
-            velocity_command=self.cmd,
+            force_reference_n=float(target_tension),        
+            velocity_command=self.cmd * self.config.command_scale,
             # Store the physical joint-position increment seen by the actuator,
             # not the raw dimensionless policy output.
             policy_action=self.action[:18] * float(self.config.action_scale),
