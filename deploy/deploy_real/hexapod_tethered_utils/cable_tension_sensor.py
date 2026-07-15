@@ -248,8 +248,7 @@ class CableTensionSensor:
             time.sleep(0.01) 
 
     def get_cable_tension(self) -> Optional[float]:
-        #return self.parser.get_cable_tension()
-        return self.parser.get_cable_tension_raw()
+        return self.parser.get_cable_tension()
     
     def get_cable_tension_raw(self) -> Optional[float]:
         return self.parser.get_cable_tension_raw()
@@ -287,5 +286,3 @@ if __name__ == "__main__":
             print("\n正在停止程序...")
             sensor.stop()
             print("程序已退出。")
-
-

@@ -1,5 +1,6 @@
 import numpy as np
 import time
+import math
 import torch
 import csv
 import os
@@ -12,6 +13,7 @@ from imu_sdk_deta40.imu_sdk import IMUSDK
 from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd,create_zero_torque_cmd
 
 from hexapod_tethered_utils.tension_torque_controller import TensionTorqueController,TensionTorqueControllerConfig
+from hexapod_tethered_utils.learned_tension_torque_selector import LearnedTensionTorqueSelector
 
 from motor_igh_sdk.deploy_real_el4090_pysoem_spool_torque import RL_Real_PySOEM_WithSpoolTorque
 
@@ -26,118 +28,127 @@ from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 import config_hexapod_tethered
 
 from config_hexapod_tethered import Config
-from pre_tension import DataConfig, ModelConfig, TCNGRUTensionPredictor
 
+# 记录数据
+class TensionTrainingCsvLogger:
+    """Write causally indexed rows consumed by ``pre_tension.py``.
 
-class OnlineTensionPredictor:
-    """Load a pre_tension.py checkpoint and run causal delta-F prediction."""
+    Timing of every row k is intentionally explicit:
+      * ``force_raw_n`` and robot state are observed at t_k;
+      * ``torque_command_prev_nm`` was executed before t_k (u_{k-1});
+      * ``torque_command_issued_nm`` is computed after that observation (u_k).
 
-    def __init__(self, checkpoint_path: str, control_dt: float) -> None:
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        checkpoint = torch.load(checkpoint_path, map_location=self.device)
-        self.data_cfg = DataConfig(**checkpoint["data_config"])
-        self.model_cfg = ModelConfig(**checkpoint["model_config"])
-        if abs(float(self.data_cfg.expected_dt_s) - float(control_dt)) > 1e-6:
-            raise ValueError(
-                f"predictor was trained at dt={self.data_cfg.expected_dt_s}, "
-                f"but deployment control_dt={control_dt}"
-            )
-        self.model = TCNGRUTensionPredictor(self.data_cfg, self.model_cfg).to(self.device)
-        self.model.load_state_dict(checkpoint["model_state_dict"])
-        self.model.eval()
-        norm = checkpoint["normalization"]
-        self.history_mean = np.asarray(norm["history_mean"], np.float32)
-        self.history_std = np.asarray(norm["history_std"], np.float32)
-        self.preview_mean = np.asarray(norm["preview_mean"], np.float32)
-        self.preview_std = np.asarray(norm["preview_std"], np.float32)
-        self.torque_mean = float(norm["torque_mean"])
-        self.torque_std = float(norm["torque_std"])
-        self.feature_names = list(checkpoint["feature_names"])
-        self.preview_names = list(checkpoint["preview_names"])
-        if len(self.feature_names) != 71 or len(self.preview_names) != 22:
-            raise ValueError(
-                f"incompatible checkpoint dimensions: history={len(self.feature_names)}, "
-                f"preview={len(self.preview_names)}; expected 71 and 22"
-            )
-        self.history = deque(maxlen=self.data_cfg.history_len)
+    The predictor uses the 18 measured joint positions and velocities directly;
+    no foot position or foot velocity columns are recorded.
 
-    @property
-    def ready(self) -> bool:
-        return len(self.history) == self.data_cfg.history_len
+    This script currently runs at Config.control_dt=0.02 s (50 Hz), so these
+    rows describe the actual 50 Hz loop, not an invented 250 Hz stream.
+    Sensor filtering should happen inside the sensor driver if needed; this
+    logger records the values returned to the control loop.
+    """
+
+    def __init__(self, directory: str, trajectory_id: str, control_dt: float,
+                 flush_every_n: int = 50) -> None:
+        os.makedirs(directory, exist_ok=True)
+        self.path = os.path.join(directory, f"{trajectory_id}.csv")
+        self.trajectory_id = trajectory_id
+        self.control_dt = float(control_dt)
+
+        self.flush_every_n = max(int(flush_every_n), 1)
+        self._rows = 0
+        self._file = open(self.path, "w", newline="", buffering=1024 * 1024)
+        self._fieldnames = self._make_fieldnames()
+        # 写入表头
+        self._writer = csv.DictWriter(self._file, fieldnames=self._fieldnames)
+        self._writer.writeheader()
+        print(f"[PreTensionCSV] logging enabled: {self.path}")
 
     @staticmethod
-    def _put_vector(frame, prefix: str, values) -> None:
-        for i, value in enumerate(np.asarray(values, np.float32).reshape(-1)):
-            frame[f"{prefix}_{i}"] = float(value)
+    def _names(prefix: str, size: int):
+        return [f"{prefix}_{i}" for i in range(size)]
 
-    def append_observation(self, *, force_n: float, torque_actual_nm: float,
-                           torque_command_prev_nm: float, motor_position_rad: float,
-                           force_reference_n: float, velocity_command,
-                           scaled_policy_action, joint_position, joint_velocity,
-                           gravity, angular_velocity, linear_acceleration) -> None:
-        frame = {
-            "force_raw_n": float(force_n),
-            # Compatibility for checkpoints trained before the raw-force schema.
-            "force_filtered_n": float(force_n),
+    # 创建列名（表头名字，scalar是标量，vector是向量）
+    @classmethod
+    def _make_fieldnames(cls):
+        scalar = [
+            "timestamp_ns", "trajectory_id", "sample_index", "control_dt_s",
+            "force_raw_n", "torque_actual_nm",
+            "torque_command_prev_nm", "torque_command_issued_nm",
+            "motor_position_rad", "force_reference_n",
+            "imu_valid", "tension_sensor_valid",
+            "saturation_flag", "emergency_flag", "data_valid_flag",
+        ]
+        vectors = []
+        for name, size in (
+            ("velocity_command", 3), ("policy_action", 18),
+            ("joint_position", 18), ("joint_velocity", 18),
+            ("body_gravity_vector", 3), ("body_angular_velocity", 3),
+            ("body_linear_acceleration", 3),
+        ):
+            vectors.extend(cls._names(name, size))
+        return scalar + vectors
+
+    @staticmethod
+    def _put_vector(row, prefix: str, value, size: int) -> None:
+        array = np.asarray(value, dtype=np.float64).reshape(-1)
+        if array.size != size:
+            raise ValueError(f"{prefix} must contain {size} values, got {array.size}")
+        for i, item in enumerate(array):
+            row[f"{prefix}_{i}"] = float(item)
+
+    def write(self, *, timestamp_ns: int, force_raw_n: float,
+              torque_actual_nm: float, torque_command_prev_nm: float,
+              torque_command_issued_nm: float, motor_position_rad: float,
+              force_reference_n: float, velocity_command, policy_action,
+              joint_position, joint_velocity, body_gravity_vector,
+              body_angular_velocity, body_linear_acceleration,
+              imu_valid: bool, tension_sensor_valid: bool,
+              saturation_flag: bool, emergency_flag: bool = False) -> None:
+        q = np.asarray(joint_position, dtype=np.float32).reshape(18)
+        # The policy is evaluated on every invocation of run(), so there is no
+        # hidden 250 Hz substep in this particular script.
+        row = {
+            "timestamp_ns": int(timestamp_ns), "trajectory_id": self.trajectory_id,
+            "sample_index": self._rows, "control_dt_s": self.control_dt,
+            "force_raw_n": float(force_raw_n),
             "torque_actual_nm": float(torque_actual_nm),
             "torque_command_prev_nm": float(torque_command_prev_nm),
+            "torque_command_issued_nm": float(torque_command_issued_nm),
             "motor_position_rad": float(motor_position_rad),
             "force_reference_n": float(force_reference_n),
+            # 记录数值是否有效，没啥用
+            "imu_valid": int(imu_valid),
+            "tension_sensor_valid": int(tension_sensor_valid),
+            "saturation_flag": int(saturation_flag),
+            "emergency_flag": int(emergency_flag),
+            "data_valid_flag": int(imu_valid and tension_sensor_valid),
         }
-        self._put_vector(frame, "velocity_command", velocity_command)
-        self._put_vector(frame, "policy_action", scaled_policy_action)
-        self._put_vector(frame, "joint_position", joint_position)
-        self._put_vector(frame, "joint_velocity", joint_velocity)
-        self._put_vector(frame, "body_gravity_vector", gravity)
-        self._put_vector(frame, "body_angular_velocity", angular_velocity)
-        self._put_vector(frame, "body_linear_acceleration", linear_acceleration)
-        # Compatibility for checkpoints trained before the raw-acceleration schema.
-        self._put_vector(frame, "body_linear_acceleration_filtered", linear_acceleration)
-        self.history.append(frame)
+        self._put_vector(row, "velocity_command", velocity_command, 3)
+        self._put_vector(row, "policy_action", policy_action, 18)
+        self._put_vector(row, "joint_position", q, 18)
+        self._put_vector(row, "joint_velocity", joint_velocity, 18)
+        self._put_vector(row, "body_gravity_vector", body_gravity_vector, 3)
+        self._put_vector(row, "body_angular_velocity", body_angular_velocity, 3)
+        self._put_vector(row, "body_linear_acceleration",
+                         body_linear_acceleration, 3)
+        # 写入数据
+        self._writer.writerow(row)
+        self._rows += 1
+        if self._rows % self.flush_every_n == 0:
+            self._file.flush()
 
-    def predict_delta_force(self, candidate_torque_nm: float, force_reference_n: float,
-                            velocity_command, scaled_policy_action) -> Optional[np.ndarray]:
-        if not self.ready:
-            return None
-        first_motor_position = self.history[0]["motor_position_rad"]
-        history = np.empty((self.data_cfg.history_len, len(self.feature_names)), np.float32)
-        for row_index, frame in enumerate(self.history):
-            values = dict(frame)
-            values["motor_position_relative"] = frame["motor_position_rad"] - first_motor_position
-            history[row_index] = [values[name] for name in self.feature_names]
-        history = (history - self.history_mean) / self.history_std
-
-        preview_values = ([float(force_reference_n)]
-                          + np.asarray(velocity_command, np.float32).reshape(3).tolist()
-                          + np.asarray(scaled_policy_action, np.float32).reshape(18).tolist())
-        preview = np.repeat(np.asarray(preview_values, np.float32)[None, :],
-                            self.data_cfg.horizon, axis=0)
-        preview = (preview - self.preview_mean) / self.preview_std
-        torque = np.full((self.data_cfg.horizon, 1), float(candidate_torque_nm), np.float32)
-        torque = (torque - self.torque_mean) / self.torque_std
-        queue_len = self.data_cfg.action_delay_steps - 1
-        if queue_len:
-            queue = np.asarray(
-                [frame["torque_command_prev_nm"] for frame in list(self.history)[-queue_len:]],
-                np.float32,
-            )[:, None]
-            queue = (queue - self.torque_mean) / self.torque_std
-        else:
-            queue = np.empty((0, 1), np.float32)
-        with torch.inference_mode():
-            delta = self.model(
-                torch.from_numpy(history).unsqueeze(0).to(self.device),
-                torch.from_numpy(torque).unsqueeze(0).to(self.device),
-                torch.from_numpy(preview).unsqueeze(0).to(self.device),
-                torch.from_numpy(queue).unsqueeze(0).to(self.device),
-            )
-        return delta[0].cpu().numpy()
+    def close(self) -> None:
+        if self._file is not None:
+            self._file.flush()
+            self._file.close()
+            self._file = None
 
 
+# 实时现实画面
 class RealTimePlotter:
     def __init__(
         self,
-        history_seconds: float = 20.0,
+        history_seconds: float = 60.0,
         control_dt: float = 0.02,
         plot_every_n: int = 5,
         enabled: bool = True,
@@ -185,6 +196,17 @@ class RealTimePlotter:
                         "imu_vx",
                         "spool_torque_cmd",
                         "spool_torque_buffer",
+                        "selector_ready",
+                        "selector_shadow",
+                        "selector_tau_base",
+                        "selector_tau_model",
+                        "selector_best_index",
+                        "selector_fallback_reason",
+                        "pred_force_20ms",
+                        "pred_force_40ms",
+                        "pred_force_60ms",
+                        "pred_force_80ms",
+                        "pred_force_100ms",
                     ]
                 )
                 self._csv_ok = True
@@ -203,6 +225,7 @@ class RealTimePlotter:
             self._plt = plt
             self._plt.ion()
 
+            # 创建4行1列的子图
             self._fig, self._axs = self._plt.subplots(
                 4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
             )
@@ -263,12 +286,21 @@ class RealTimePlotter:
         imu_vx: float,
         spool_torque_cmd: float,
         spool_torque_buffer: float,
+        tension_selector_debug: Optional[dict] = None,
     ) -> None:
         self._step += 1
 
         # Always append to CSV if enabled, even when plotting is disabled.
         if self.csv_enabled and self._csv_ok and self._csv_writer is not None:
             try:
+                selector_debug = tension_selector_debug or {}
+                predicted = selector_debug.get("predicted_force", [])
+                best_index = selector_debug.get("best_index")
+                if isinstance(best_index, int) and 0 <= best_index < len(predicted):
+                    best_prediction = list(predicted[best_index])[:5]
+                else:
+                    best_prediction = []
+                best_prediction += [float("nan")] * (5 - len(best_prediction))
                 self._csv_writer.writerow(
                     [
                         float(t_s),
@@ -278,6 +310,13 @@ class RealTimePlotter:
                         float(imu_vx),
                         float(spool_torque_cmd),
                         float(spool_torque_buffer),
+                        int(bool(selector_debug.get("ready", False))),
+                        int(bool(selector_debug.get("shadow_mode", True))),
+                        selector_debug.get("tau_base", ""),
+                        selector_debug.get("tau_model", ""),
+                        "" if best_index is None else best_index,
+                        selector_debug.get("fallback_reason", ""),
+                        *best_prediction,
                     ]
                 )
                 if (self._step % self._csv_flush_every_n) == 0 and self._csv_file is not None:
@@ -305,6 +344,7 @@ class RealTimePlotter:
         if t.size < 2:
             return
 
+        # 真正的图像数据传入接口
         self._ln_tension_meas.set_data(t, np.asarray(self._tension_meas, dtype=np.float32))
         self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
         self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
@@ -349,9 +389,17 @@ class Controller:
         self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
 
         self.policy = torch.jit.load(config.policy_path)
-        self.tension_predictor = OnlineTensionPredictor(
-            config.pre_tension_model_path, float(config.control_dt)
-        )
+
+        # 内部写warm up了
+        self.tension_selector = LearnedTensionTorqueSelector(config.pre_tension_model_path)
+
+        if abs(float(config.control_dt) - self.tension_selector.cfg.control_dt_s) > 1e-9:
+            raise ValueError(
+                f"control_dt={config.control_dt} does not match tension model "
+                f"dt={self.tension_selector.cfg.control_dt_s}"
+            )
+
+        self.last_tension_selector_debug = {}
         # 预热网络，减少第一次推理的延迟
         self._warm_up()
         
@@ -364,18 +412,31 @@ class Controller:
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
         self.counter = 0
-        self._previous_spool_torque_command_nm = 0.0
-        self.last_predicted_delta_force = None
 
         # Create log directory with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         self.log_dir = os.path.join(os.getcwd(), "motor_logs", f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
 
+        # Predictor-training data is kept separately from plotting/motor debug
+        # logs.  One process invocation is one independent trajectory.
+        self.trajectory_id = f"hexapod_{timestamp}"
+        pre_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pre_data")
+        self.pre_tension_logger = TensionTrainingCsvLogger(
+            directory=pre_data_dir,
+            trajectory_id=self.trajectory_id,
+            control_dt=float(self.config.control_dt),
+            flush_every_n=50,
+        )
+        # This is u_{k-1} at the next call to run().  It is deliberately not
+        # overwritten until the complete pre-action row has been written.
+        self._previous_spool_torque_command_nm = 0.0
+        self.tension_selector.reset(initial_torque_nm=0.0)
+
         # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
         # Plot refresh is decimated to reduce impact on control timing.
         self.plotter = RealTimePlotter(
-            history_seconds=20.0,
+            history_seconds=60.0,
             control_dt=float(self.config.control_dt),
             plot_every_n=5,
             enabled=True,
@@ -463,6 +524,11 @@ class Controller:
                 self.plotter.close()
             except Exception:
                 pass
+        if getattr(self, "pre_tension_logger", None) is not None:
+            try:
+                self.pre_tension_logger.close()
+            except Exception:
+                pass
         print(f'[Logging] All log files saved to {self.log_dir}')
 
     def _build_policy_joint_gains(self):
@@ -504,9 +570,18 @@ class Controller:
 
     def _warm_up(self):
         obs = torch.ones((1, int(self.config.num_obs)))
-        for _ in range(10):
-            _ = self.policy(obs)
+        with torch.inference_mode():
+            for _ in range(10):
+                _ = self.policy(obs)
         print('Network has been warmed up.')
+
+    def reset_tension_control_state(self, initial_torque_nm: float = 0.0):
+        """Synchronize all causal controller state after a stopped-spool phase."""
+        initial = float(initial_torque_nm)
+        self._previous_spool_torque_command_nm = initial
+        self.tension_torque_controller.reset()
+        self.tension_selector.reset(initial_torque_nm=initial)
+        self.last_tension_selector_debug = {}
 
 
     # 零力矩模式
@@ -527,6 +602,7 @@ class Controller:
         print('Moving to default pos.')
         # Safety: ensure spool speed motor (id19) is stopped while repositioning joints.
         create_zero_torque_cmd(self.robot)
+        self.reset_tension_control_state(initial_torque_nm=0.0)
         total_time = 2
         num_step = int(total_time / self.config.control_dt)
         default_pos = self.config.default_angles
@@ -620,18 +696,31 @@ class Controller:
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot run control loop")
 
+        cycle_started = time.perf_counter()
         self.counter += 1
+        # Monotonic host time is used for interval/order validation. Unlike
+        # wall-clock time it cannot jump backwards after NTP/manual correction.
+        observation_timestamp_ns = time.monotonic_ns()
         for i in range(18):
             self.qj[i] = self.robot.motor_state_buffer.position[i]
             self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
 
-        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
+        motor_pos_rad = self.robot.spool_state_buffer.position[0]
+        motor_pos_rad = motor_pos_rad % (2 * math.pi)
+        self.spool_q[0] = motor_pos_rad
+        # Snapshot tau_actual_k before computing/writing the new command u_k.
+        # Do not read this shared driver buffer again for the same CSV row.
+        spool_torque_actual_pre_action = float(2.1 * self.robot.spool_state_buffer.torque[0])
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
 
+        # CableTensionSensor.get_cable_tension() already returns the sensor LPF
+        # result.  Use this one signal consistently in policy, baseline control,
+        # learned prediction and logging.
         tension_value = self.tension_sensor.get_cable_tension()
-        if tension_value is None:
+        tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
+        if not tension_sensor_valid:
             tension_value = 0.0
             
         pitch_value = self.pitch_sensor.get_angle()
@@ -651,6 +740,7 @@ class Controller:
             ang_vel = np.zeros(3, dtype=np.float32)
             gravity_orientation = np.array([0.0, 0.0, -1.0], dtype=np.float32)  # 假设重力向下
             body_linear_acceleration = np.zeros(3, dtype=np.float32)
+            imu_valid = False
         else:
             linvel = np.asarray(vel, dtype=np.float32)
             ang_vel = np.asarray(
@@ -659,6 +749,12 @@ class Controller:
             gravity_orientation = np.asarray(grav, dtype=np.float32)
             body_linear_acceleration = np.asarray(
                 [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']], dtype=np.float32
+            )
+            imu_valid = bool(
+                np.all(np.isfinite(linvel))
+                and np.all(np.isfinite(ang_vel))
+                and np.all(np.isfinite(gravity_orientation))
+                and np.all(np.isfinite(body_linear_acceleration))
             )
 
             # Match sim2sim convention: gravity is a unit vector in body frame.
@@ -696,7 +792,8 @@ class Controller:
         self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
-        self.action = self.policy(obs_tensor).detach().numpy().squeeze()
+        with torch.inference_mode():
+            self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
         # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
         self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
@@ -707,20 +804,8 @@ class Controller:
         
         target_tension = self.action[18] * self.config.tension_action_scale
         scaled_policy_action = self.action[:18] * float(self.config.action_scale)
-
-        self.tension_predictor.append_observation(
-            force_n=float(tension_value),
-            torque_actual_nm=float(self.robot.spool_state_buffer.torque[0]),
-            torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
-            motor_position_rad=float(self.spool_q[0]),
-            force_reference_n=float(target_tension),
-            velocity_command=self.cmd,
-            scaled_policy_action=scaled_policy_action,
-            joint_position=self.qj,
-            joint_velocity=self.dqj,
-            gravity=gravity_orientation,
-            angular_velocity=ang_vel,
-            linear_acceleration=body_linear_acceleration,
+        velocity_command_model = self.cmd * np.asarray(
+            self.config.command_scale, dtype=np.float32
         )
 
         for i in range(18):
@@ -770,26 +855,72 @@ class Controller:
         # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
+        tau_base,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
             speed_input=float(cmd[0]),
             #speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
         )
-        # The learned model is called causally after u_k has been computed.  At
-        # this stage it predicts the delta-F trajectory for that proposed
-        # command; it does not create a second force output.
-        self.last_predicted_delta_force = self.tension_predictor.predict_delta_force(
-            candidate_torque_nm=float(spool_torque_cmd),
-            force_reference_n=float(target_tension),
-            velocity_command=self.cmd,
+
+        torque_limit = abs(float(self.config.tsc_torque_limit))
+
+        spool_torque_cmd, self.last_tension_selector_debug = self.tension_selector.step(
+            timestamp_ns=observation_timestamp_ns,
+            force_n=float(tension_value),
+            torque_actual_nm=spool_torque_actual_pre_action,
+            torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
+            motor_position_rad=float(self.spool_q[0]),
+            joint_position=self.qj,
+            joint_velocity=self.dqj,
+            body_gravity=gravity_orientation,
+            body_angular_velocity=ang_vel,
+            body_linear_acceleration=body_linear_acceleration,
+            velocity_command=velocity_command_model,
             scaled_policy_action=scaled_policy_action,
+            force_reference_n=float(target_tension),
+            baseline_torque_nm=float(tau_base),
+            hardware_torque_min_nm=-torque_limit,
+            hardware_torque_max_nm=torque_limit,
+            # 按 alpha 融合传统控制器与模型候选；shadow_mode=True 时仅预测、不接管控制。
+            alpha=0.8,# 这个1.0就是全走模型，0.0全是base
+            shadow_mode=False,
+            data_valid=bool(imu_valid and tension_sensor_valid),
+            emergency=False,
         )
         self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
-        self._previous_spool_torque_command_nm = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
+
+        # Write after u_k has been computed, while retaining the pre-action
+        # observation and the distinct u_{k-1}.
+        saturation_flag = abs(float(spool_torque_cmd)) >= max(torque_limit - 1e-6, 0.0)
+        self.pre_tension_logger.write(
+            timestamp_ns=observation_timestamp_ns,
+            force_raw_n=float(tension_value),
+            # 实际力矩
+            torque_actual_nm=spool_torque_actual_pre_action,
+            # 上一帧的期望力矩
+            torque_command_prev_nm=float(self._previous_spool_torque_command_nm),
+            # 期望力矩
+            torque_command_issued_nm=float(spool_torque_cmd),
+            motor_position_rad=float(self.spool_q[0]),
+            force_reference_n=float(target_tension),
+            velocity_command=velocity_command_model,
+            # Store the physical joint-position increment seen by the actuator,
+            # not the raw dimensionless policy output.
+            policy_action=scaled_policy_action,
+            joint_position=self.qj,
+            joint_velocity=self.dqj,
+            body_gravity_vector=gravity_orientation,
+            body_angular_velocity=ang_vel,
+            body_linear_acceleration=body_linear_acceleration,
+            imu_valid=imu_valid,
+            tension_sensor_valid=tension_sensor_valid,
+            saturation_flag=saturation_flag,
+            emergency_flag=False,
+        )
+        self._previous_spool_torque_command_nm = float(spool_torque_cmd)
         # Update real-time plots (best-effort; does nothing if disabled)
         if getattr(self, "plotter", None) is not None:
             self.plotter.update(
@@ -800,8 +931,10 @@ class Controller:
                 imu_vx=float(cmd[0]),
                 spool_torque_cmd=float(spool_torque_cmd),
                 spool_torque_buffer=float(spool_torque),
+                tension_selector_debug=self.last_tension_selector_debug,
             )
-        time.sleep(self.config.control_dt)
+        cycle_elapsed = time.perf_counter() - cycle_started
+        time.sleep(max(float(self.config.control_dt) - cycle_elapsed, 0.0))
 
 
 if __name__ == "__main__":
@@ -849,6 +982,12 @@ if __name__ == "__main__":
             controller.gamepad.stop()
         except Exception:
             pass
+
+    # The learning trajectory ends with the policy loop; close it before the
+    # potentially long damping phase so the CSV header and final buffered rows
+    # are guaranteed to be on disk.
+    if getattr(controller, "pre_tension_logger", None) is not None:
+        controller.pre_tension_logger.close()
 
     print("Entering damping mode to lower the robot safely. Press Ctrl+C to exit completely.")
     # Keep sending damping command continuously to keep the robot in damping mode

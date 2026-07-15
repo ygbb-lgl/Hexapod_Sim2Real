@@ -79,7 +79,7 @@ from torch import Tensor, nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 
-
+# 写了这个@自动生成init
 @dataclass
 class DataConfig:
     history_len: int = 64
@@ -202,6 +202,7 @@ class FeatureLayout:
         self.obs_dim = offset
 
 
+# 读取CSV文件，按trajectory_id分组，并按时间戳排序
 class CsvTrajectories:
     REQUIRED_SCALARS = [
         "timestamp_ns", "trajectory_id", "force_raw_n", "torque_actual_nm",
@@ -273,6 +274,7 @@ def split_trajectory_ids(ids: Sequence[str], train_cfg: TrainConfig
     return ids[n_test + n_val:], ids[n_test:n_test + n_val], ids[:n_test]
 
 
+# 切训练样本，组和一组历史和未来信息数据
 class WindowBuilder:
     def __init__(self, data: CsvTrajectories, cfg: DataConfig) -> None:
         self.data, self.cfg = data, cfg
@@ -457,7 +459,7 @@ class ForceDeltaHead(nn.Sequential):
     def __init__(self, latent_dim: int) -> None:
         super().__init__(nn.Linear(latent_dim, 32), nn.SiLU(), nn.Linear(32, 1))
 
-
+# 核心模型
 class TCNGRUTensionPredictor(nn.Module):
     def __init__(self, data_cfg: DataConfig, model_cfg: ModelConfig) -> None:
         super().__init__()
@@ -506,6 +508,8 @@ class TCNGRUTensionPredictor(nn.Module):
                                         future_preview, delay_queue_state)
 
 
+
+# 损失函数
 class TensionLoss(nn.Module):
     def __init__(self, cfg: TrainConfig, horizon: int, action_delay_steps: int) -> None:
         super().__init__()
