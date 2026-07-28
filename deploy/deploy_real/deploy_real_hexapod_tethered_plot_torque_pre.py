@@ -439,7 +439,10 @@ class Controller:
             history_seconds=60.0,
             control_dt=float(self.config.control_dt),
             plot_every_n=5,
-            enabled=True,
+            # The model resets its causal history after a timing gap. GUI
+            # refreshes are therefore opt-in and should not run during normal
+            # model deployment or timing-sensitive data collection.
+            enabled=os.environ.get("HEXAPOD_REALTIME_PLOT", "0") == "1",
             csv_enabled=True,
             csv_path=os.path.join(self.log_dir, "plot_data.csv"),
             csv_flush_every_n=50,

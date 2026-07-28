@@ -51,7 +51,7 @@ Inspect and train from the repository root (current logger is 50 Hz)::
         --expected-dt-s 0.02
 
     conda run -n isaacgym python deploy/deploy_real/pre_tension.py train \
-        --csv deploy/deploy_real/pre_data/merged_training_data.csv \
+        --csv deploy/deploy_real/pre_data/merged_training_data_0728_8500_0728.pt.csv \
         --output deploy/pre_train/hexapod_tethered/tension_model.pt \
         --expected-dt-s 0.02
 
@@ -285,24 +285,75 @@ class WindowBuilder:
                if cfg.use_policy_action else []))
         self.preview_dim = len(self.preview_names)
 
+    def _row_is_valid(self, row: Mapping[str, float]) -> bool:
+        return (bool(row["_finite"])
+                and bool(row["data_valid_flag"])
+                and not bool(row["emergency_flag"])
+                and not bool(row["saturation_flag"]))
+
+    def _timing_bounds_ns(self) -> Tuple[float, float]:
+        dt_ns = self.cfg.expected_dt_s * 1e9
+        return (dt_ns * (1 - self.cfg.timestamp_tolerance),
+                dt_ns * (1 + self.cfg.timestamp_tolerance))
+
     def valid_centers(self, ids: Iterable[str]) -> List[Tuple[str, int]]:
         out = []
         n, h = self.cfg.history_len, self.cfg.horizon
-        max_dt = self.cfg.expected_dt_s * (1 + self.cfg.timestamp_tolerance) * 1e9
-        min_dt = self.cfg.expected_dt_s * (1 - self.cfg.timestamp_tolerance) * 1e9
+        min_dt, max_dt = self._timing_bounds_ns()
         for tid in ids:
             rows = self.data.trajectories[tid]
             for k in range(n - 1, len(rows) - h):
                 segment = rows[k - n + 1:k + h + 1]
-                if any(not r["_finite"] or not bool(r["data_valid_flag"])
-                       or bool(r["emergency_flag"]) or bool(r["saturation_flag"])
-                       for r in segment):
+                if any(not self._row_is_valid(r) for r in segment):
                     continue
                 dts = np.diff([r["timestamp_ns"] for r in segment])
                 if np.any(dts < min_dt) or np.any(dts > max_dt):
                     continue
                 out.append((tid, k))
         return out
+
+    def trajectory_diagnostics(self, tid: str) -> Dict[str, object]:
+        """Explain why a trajectory does or does not produce training windows."""
+        rows = self.data.trajectories[tid]
+        required_rows = self.cfg.history_len + self.cfg.horizon
+        candidate_windows = max(len(rows) - required_rows + 1, 0)
+        row_valid = np.asarray([self._row_is_valid(row) for row in rows], dtype=bool)
+        timestamps = np.asarray([row["timestamp_ns"] for row in rows], dtype=np.int64)
+        dts_ns = np.diff(timestamps)
+        min_dt, max_dt = self._timing_bounds_ns()
+        timing_valid = (dts_ns >= min_dt) & (dts_ns <= max_dt)
+
+        # Number of consecutive usable rows. A valid interval connects the new
+        # row to the preceding one; invalid sensor/status rows also break a run.
+        longest_run = current_run = 0
+        for index, valid in enumerate(row_valid):
+            connected = index == 0 or bool(timing_valid[index - 1])
+            if valid and connected:
+                current_run += 1
+            elif valid:
+                current_run = 1
+            else:
+                current_run = 0
+            longest_run = max(longest_run, current_run)
+
+        dt_ms = dts_ns.astype(np.float64) * 1e-6
+        timing = {
+            "expected_dt_ms": 1000.0 * self.cfg.expected_dt_s,
+            "allowed_dt_ms": [min_dt * 1e-6, max_dt * 1e-6],
+            "median_dt_ms": float(np.median(dt_ms)) if len(dt_ms) else None,
+            "p95_dt_ms": float(np.percentile(dt_ms, 95)) if len(dt_ms) else None,
+            "max_dt_ms": float(np.max(dt_ms)) if len(dt_ms) else None,
+            "out_of_tolerance_intervals": int((~timing_valid).sum()),
+        }
+        return {
+            "rows": len(rows),
+            "required_consecutive_rows_per_window": required_rows,
+            "candidate_windows_before_filtering": candidate_windows,
+            "valid_windows": len(self.valid_centers([tid])),
+            "invalid_status_rows": int((~row_valid).sum()),
+            "longest_valid_contiguous_run_rows": longest_run,
+            "timing": timing,
+        }
 
     @staticmethod
     def _values(row: Mapping[str, float], prefix: str, dim: int) -> List[float]:
@@ -594,8 +645,23 @@ def train(args: argparse.Namespace) -> None:
                "val": builder.valid_centers(val_ids),
                "test": builder.valid_centers(test_ids)}
     if any(not v for v in centers.values()):
-        raise ValueError(f"one or more splits have no valid windows: "
-                         f"{ {k: len(v) for k, v in centers.items()} }")
+        split = {"train": train_ids, "val": val_ids, "test": test_ids}
+        diagnostics = {
+            tid: builder.trajectory_diagnostics(tid)
+            for ids in split.values() for tid in ids
+        }
+        report = {
+            "trajectory_split": split,
+            "window_counts": {key: len(value) for key, value in centers.items()},
+            "trajectory_diagnostics": diagnostics,
+        }
+        raise ValueError(
+            "trajectory train/val/test splitting succeeded, but one or more splits "
+            "contain no valid windows. A window needs "
+            f"{data_cfg.history_len + data_cfg.horizon} consecutive valid rows with "
+            "timestamps inside the configured tolerance. Diagnostics:\n"
+            + json.dumps(report, indent=2)
+        )
     norm = fit_normalization(builder, centers["train"])
     datasets = {k: TensionWindowDataset(builder, v, norm) for k, v in centers.items()}
     loaders = {k: DataLoader(ds, batch_size=train_cfg.batch_size, shuffle=(k == "train"),
@@ -653,12 +719,18 @@ def train(args: argparse.Namespace) -> None:
 def inspect_csv(args: argparse.Namespace) -> None:
     cfg = DataConfig(history_len=args.history_len, horizon=args.horizon,
                      action_delay_steps=args.action_delay_steps,
-                     expected_dt_s=args.expected_dt_s)
+                     expected_dt_s=args.expected_dt_s,
+                     timestamp_tolerance=args.timestamp_tolerance)
     data = CsvTrajectories(Path(args.csv), cfg)
     builder = WindowBuilder(data, cfg)
-    counts = {tid: len(builder.valid_centers([tid])) for tid in data.trajectories}
+    diagnostics = {
+        tid: builder.trajectory_diagnostics(tid) for tid in data.trajectories
+    }
+    counts = {tid: int(item["valid_windows"])
+              for tid, item in diagnostics.items()}
     print(json.dumps({"trajectories": len(counts), "rows": sum(map(len, data.trajectories.values())),
                       "valid_windows_by_trajectory": counts,
+                      "trajectory_diagnostics": diagnostics,
                       "obs_dim": builder.layout.obs_dim,
                       "preview_dim": builder.preview_dim}, indent=2))
 
@@ -671,7 +743,8 @@ def build_parser() -> argparse.ArgumentParser:
     common.add_argument("--history-len", type=int, default=64)
     common.add_argument("--horizon", type=int, default=5)
     common.add_argument("--action-delay-steps", type=int, default=1)
-    common.add_argument("--expected-dt-s", type=float, default=0.004)
+    common.add_argument("--expected-dt-s", type=float, default=0.02)
+    common.add_argument("--timestamp-tolerance", type=float, default=0.35)
     check = sub.add_parser("inspect-csv", parents=[common])
     check.set_defaults(func=inspect_csv)
     run = sub.add_parser("train", parents=[common])

@@ -398,7 +398,10 @@ class Controller:
             history_seconds=60.0,
             control_dt=float(self.config.control_dt),
             plot_every_n=5,
-            enabled=True,
+            # Matplotlib refreshes block the control thread for roughly
+            # 100--150 ms on this machine. Keep CSV diagnostics enabled, but
+            # require an explicit opt-in for the non-real-time GUI.
+            enabled=os.environ.get("HEXAPOD_REALTIME_PLOT", "0") == "1",
             csv_enabled=True,
             csv_path=os.path.join(self.log_dir, "plot_data.csv"),
             csv_flush_every_n=50,
@@ -645,6 +648,7 @@ class Controller:
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot run control loop")
 
+        cycle_started = time.perf_counter()
         self.counter += 1
         # Monotonic host time is used for interval/order validation. Unlike
         # wall-clock time it cannot jump backwards after NTP/manual correction.
@@ -845,7 +849,8 @@ class Controller:
                 spool_torque_cmd=float(spool_torque_cmd),
                 spool_torque_buffer=float(spool_torque),
             )
-        time.sleep(self.config.control_dt)
+        cycle_elapsed = time.perf_counter() - cycle_started
+        time.sleep(max(float(self.config.control_dt) - cycle_elapsed, 0.0))
 
 
 if __name__ == "__main__":
