@@ -183,7 +183,9 @@ class RealTimePlotter:
                 if csv_path is None:
                     csv_path = os.path.join(os.getcwd(), "plot_data.csv")
                 os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
-                self._csv_file = open(csv_path, "w", newline="")
+                self._csv_file = open(
+                    csv_path, "w", newline="", buffering=1024 * 1024
+                )
                 self._csv_writer = csv.writer(self._csv_file)
                 self._csv_writer.writerow(
                     [
@@ -360,6 +362,7 @@ class Controller:
         self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
 
         self.policy = torch.jit.load(config.policy_path)
+        self.policy.eval()
         # 预热网络，减少第一次推理的延迟
         self._warm_up()
         
@@ -372,6 +375,30 @@ class Controller:
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
         self.counter = 0
+        # Schedule observation start times, rather than sleeping at the end of
+        # run().  End-of-cycle sleeping does not account for work performed by
+        # the outer button/state loop and produced ~22 ms periods for a 20 ms
+        # configuration.
+        self._control_period_ns = int(round(float(config.control_dt) * 1e9))
+        if self._control_period_ns <= 0:
+            raise ValueError(f"control_dt must be positive, got {config.control_dt}")
+        timing_tolerance = 0.35
+        self._timing_min_dt_ns = int(
+            round(self._control_period_ns * (1.0 - timing_tolerance))
+        )
+        self._timing_max_dt_ns = int(
+            round(self._control_period_ns * (1.0 + timing_tolerance))
+        )
+        self._next_cycle_start_ns = None
+        self._last_observation_timestamp_ns = None
+        self._timing_interval_count = 0
+        self._timing_violation_count = 0
+        self._timing_max_dt_ns = 0
+        self._compute_overrun_count = 0
+        self._max_compute_time_ns = 0
+        self.timing_warning_message = None
+        self._timing_warning_sequence = 0
+        self._timing_warning_reported_sequence = 0
 
         # Create log directory with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -392,20 +419,11 @@ class Controller:
         # overwritten until the complete pre-action row has been written.
         self._previous_spool_torque_command_nm = 0.0
 
-        # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
-        # Plot refresh is decimated to reduce impact on control timing.
-        self.plotter = RealTimePlotter(
-            history_seconds=60.0,
-            control_dt=float(self.config.control_dt),
-            plot_every_n=5,
-            # Matplotlib refreshes block the control thread for roughly
-            # 100--150 ms on this machine. Keep CSV diagnostics enabled, but
-            # require an explicit opt-in for the non-real-time GUI.
-            enabled=os.environ.get("HEXAPOD_REALTIME_PLOT", "0") == "1",
-            csv_enabled=True,
-            csv_path=os.path.join(self.log_dir, "plot_data.csv"),
-            csv_flush_every_n=50,
-        )
+        # Do not even construct/update RealTimePlotter in this timing-sensitive
+        # collector.  Matplotlib redraws previously blocked the control thread
+        # for 100--150 ms every five samples.  Training and motor CSV logging
+        # below remain enabled; plotting must be done offline after collection.
+        self.plotter = None
         
         # Open 18 CSV files for logging motor data
         self.log_files = []
@@ -413,7 +431,7 @@ class Controller:
         for i in range(18):
             motor_id = int(self.config.joint2motor_idx[i])
             filepath = os.path.join(self.log_dir, f'motor_{motor_id:02d}_policy_idx_{i:02d}.csv')
-            log_file = open(filepath, 'w', newline='')
+            log_file = open(filepath, 'w', newline='', buffering=1024 * 1024)
             writer = csv.writer(log_file)
             writer.writerow(['time_step', 'counter', 'target_pos', 'actual_pos', 'error', 'action'])
             self.log_files.append(log_file)
@@ -457,7 +475,7 @@ class Controller:
             print("[WARNING] IMU start failed. Will use zero data.")
 
         # 六位力传感器初始化 RS232
-        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB_cable_tension', baudrate=115200)
+        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB0', baudrate=115200)
         self.tension_started = self.tension_sensor.start()
         if not self.tension_started:
             print("[WARNING] Tension sensor start failed. Will use zero data.")
@@ -476,10 +494,10 @@ class Controller:
 
     def __del__(self):
         # Close all log files
-        for i in range(18):
+        for log_file in getattr(self, "log_files", []):
             try:
-                self.log_files[i].close()
-            except:
+                log_file.close()
+            except Exception:
                 pass
         if getattr(self, "plotter", None) is not None:
             try:
@@ -491,7 +509,83 @@ class Controller:
                 self.pre_tension_logger.close()
             except Exception:
                 pass
-        print(f'[Logging] All log files saved to {self.log_dir}')
+        log_dir = getattr(self, "log_dir", None)
+        if log_dir is not None:
+            print(f'[Logging] All log files saved to {log_dir}')
+
+    def _wait_for_control_tick(self) -> int:
+        """Wait until the next 50 Hz observation time and update timing QA."""
+        if self._next_cycle_start_ns is not None:
+            remaining_ns = self._next_cycle_start_ns - time.monotonic_ns()
+            if remaining_ns > 0:
+                time.sleep(remaining_ns * 1e-9)
+
+        timestamp_ns = time.monotonic_ns()
+        # Reschedule from the actual wake-up time.  If a device call overruns,
+        # this avoids a rapid catch-up burst and restores one stable period
+        # before the next observation.
+        self._next_cycle_start_ns = timestamp_ns + self._control_period_ns
+
+        previous_ns = self._last_observation_timestamp_ns
+        if previous_ns is not None:
+            dt_ns = timestamp_ns - previous_ns
+            self._timing_interval_count += 1
+            self._timing_max_dt_ns = max(self._timing_max_dt_ns, dt_ns)
+            timing_violation = not (
+                self._timing_min_dt_ns <= dt_ns <= self._timing_max_dt_ns
+            )
+            if timing_violation:
+                self._timing_violation_count += 1
+                self.timing_warning_message = (
+                    f"interval {dt_ns * 1e-6:.3f} ms outside "
+                    f"[{self._timing_min_dt_ns * 1e-6:.1f}, "
+                    f"{self._timing_max_dt_ns * 1e-6:.1f}] ms"
+                )
+                self._timing_warning_sequence += 1
+        self._last_observation_timestamp_ns = timestamp_ns
+        return timestamp_ns
+
+    def print_timing_summary(self) -> None:
+        intervals = self._timing_interval_count
+        violations = self._timing_violation_count
+        violation_rate = 100.0 * violations / max(intervals, 1)
+        max_dt_ms = self._timing_max_dt_ns * 1e-6 if intervals else 0.0
+        max_compute_ms = self._max_compute_time_ns * 1e-6
+        print(
+            "[Timing] "
+            f"intervals={intervals}, violations={violations} "
+            f"({violation_rate:.3f}%), allowed="
+            f"[{self._timing_min_dt_ns * 1e-6:.1f}, "
+            f"{self._timing_max_dt_ns * 1e-6:.1f}] ms, "
+            f"max_dt={max_dt_ms:.3f} ms, "
+            f"compute_overruns={self._compute_overrun_count}, "
+            f"max_compute={max_compute_ms:.3f} ms"
+        )
+
+    def start_new_training_trajectory(self) -> None:
+        """Start a fresh CSV after a blocking pause/state transition."""
+        if getattr(self, "pre_tension_logger", None) is not None:
+            self.pre_tension_logger.close()
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        self.trajectory_id = f"hexapod_{timestamp}"
+        pre_data_dir = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "pre_data"
+        )
+        self.pre_tension_logger = TensionTrainingCsvLogger(
+            directory=pre_data_dir,
+            trajectory_id=self.trajectory_id,
+            control_dt=float(self.config.control_dt),
+            flush_every_n=50,
+        )
+        # The spool is explicitly zeroed before this method is called.
+        self._previous_spool_torque_command_nm = 0.0
+        self._next_cycle_start_ns = None
+        self._last_observation_timestamp_ns = None
+        self.timing_warning_message = None
+        self._timing_warning_sequence = 0
+        self._timing_warning_reported_sequence = 0
+        print(f"[PreTensionCSV] new trajectory after pause: {self.trajectory_id}")
 
     def _build_policy_joint_gains(self):
         """Build kp/kd arrays aligned with policy joint indices.
@@ -512,14 +606,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group2:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group3:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -532,8 +626,12 @@ class Controller:
 
     def _warm_up(self):
         obs = torch.ones((1, int(self.config.num_obs)))
-        for _ in range(10):
-            _ = self.policy(obs)
+        # Keep warm-up and runtime in the same autograd mode.  This particular
+        # TorchScript policy is incompatible with inference tensors, while
+        # no_grad still provides the desired gradient-free execution.
+        with torch.no_grad():
+            for _ in range(10):
+                _ = self.policy(obs)
         print('Network has been warmed up.')
 
 
@@ -648,11 +746,10 @@ class Controller:
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot run control loop")
 
-        cycle_started = time.perf_counter()
         self.counter += 1
         # Monotonic host time is used for interval/order validation. Unlike
         # wall-clock time it cannot jump backwards after NTP/manual correction.
-        observation_timestamp_ns = time.monotonic_ns()
+        observation_timestamp_ns = self._wait_for_control_tick()
         for i in range(18):
             self.qj[i] = self.robot.motor_state_buffer.position[i]
             self.dqj[i] = self.robot.motor_state_buffer.velocity[i]
@@ -734,15 +831,18 @@ class Controller:
         
         #self.obs[67] = np.float32(0)
         self.obs[67] = np.float32(tension_value)
-        #self.obs[68] = np.float32(0)
-        self.obs[68] = np.float32(yaw_differ_value)
+        self.obs[68] = np.float32(0)
+        #self.obs[68] = np.float32(yaw_differ_value)
         self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
-        self.action = self.policy(obs_tensor).detach().numpy().squeeze()
+        with torch.no_grad():
+            action_tensor = self.policy(obs_tensor)
+        # Break the storage alias before NumPy performs in-place clipping.
+        self.action = action_tensor.detach().cpu().numpy().squeeze().copy()
 
         # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
-        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
         self.action[18] = np.clip(self.action[18], 0.0, 2.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
@@ -838,19 +938,10 @@ class Controller:
             emergency_flag=False,
         )
         self._previous_spool_torque_command_nm = float(spool_torque_cmd)
-        # Update real-time plots (best-effort; does nothing if disabled)
-        if getattr(self, "plotter", None) is not None:
-            self.plotter.update(
-                t_s=float(self.counter * self.config.control_dt),
-                tension_value=float(tension_value),
-                target_tension=float(target_tension),
-                yaw_differ_value=float(yaw_differ_value),
-                imu_vx=float(cmd[0]),
-                spool_torque_cmd=float(spool_torque_cmd),
-                spool_torque_buffer=float(spool_torque),
-            )
-        cycle_elapsed = time.perf_counter() - cycle_started
-        time.sleep(max(float(self.config.control_dt) - cycle_elapsed, 0.0))
+        compute_time_ns = time.monotonic_ns() - observation_timestamp_ns
+        self._max_compute_time_ns = max(self._max_compute_time_ns, compute_time_ns)
+        if compute_time_ns > self._control_period_ns:
+            self._compute_overrun_count += 1
 
 
 if __name__ == "__main__":
@@ -878,16 +969,29 @@ if __name__ == "__main__":
         try:
             
             controller.run()
+            if (
+                controller.timing_warning_message is not None
+                and controller._timing_warning_sequence
+                != controller._timing_warning_reported_sequence
+            ):
+                print(f"[Timing] warning: {controller.timing_warning_message}")
+                controller._timing_warning_reported_sequence = (
+                    controller._timing_warning_sequence
+                )
             if controller.gamepad.get_button_lb() == 1:
                 break
 
             if controller.gamepad.get_button_y() == 1:
                 # Safety: stop spool speed motor immediately on Y.
                 create_zero_torque_cmd(controller.robot)
+                # Do not put the blocking default-position pause and the
+                # resumed policy loop in the same training trajectory.
+                controller.pre_tension_logger.close()
                 controller.move_to_default_pos()
                 # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
                 controller.default_pos_state()
                 create_zero_torque_cmd(controller.robot)
+                controller.start_new_training_trajectory()
             
         except KeyboardInterrupt:
             break
@@ -898,6 +1002,8 @@ if __name__ == "__main__":
             controller.gamepad.stop()
         except Exception:
             pass
+
+    controller.print_timing_summary()
 
     # The learning trajectory ends with the policy loop; close it before the
     # potentially long damping phase so the CSV header and final buffered rows

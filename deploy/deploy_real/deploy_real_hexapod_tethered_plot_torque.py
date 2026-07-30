@@ -261,17 +261,10 @@ class Controller:
         self.log_dir = os.path.join(os.getcwd(), "motor_logs", f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # Real-time plots (best-effort; auto-disables if matplotlib/GUI unavailable)
-        # Plot refresh is decimated to reduce impact on control timing.
-        self.plotter = RealTimePlotter(
-            history_seconds=20.0,
-            control_dt=float(self.config.control_dt),
-            plot_every_n=5,
-            enabled=True,
-            csv_enabled=True,
-            csv_path=os.path.join(self.log_dir, "plot_data.csv"),
-            csv_flush_every_n=50,
-        )
+        # Temporarily disable all runtime plotting in the control process.
+        # Constructing/updating RealTimePlotter would run Matplotlib GUI work on
+        # this same thread and can block the control loop for 100+ ms.
+        self.plotter = None
         
         # Open 18 CSV files for logging motor data
         self.log_files = []
@@ -649,17 +642,6 @@ class Controller:
         self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
-        # Update real-time plots (best-effort; does nothing if disabled)
-        if getattr(self, "plotter", None) is not None:
-            self.plotter.update(
-                t_s=float(self.counter * self.config.control_dt),
-                tension_value=float(tension_value),
-                target_tension=float(target_tension),
-                yaw_differ_value=float(yaw_differ_value),
-                imu_vx=float(cmd[0]),
-                spool_torque_cmd=float(spool_torque_cmd),
-                spool_torque_buffer=float(spool_torque),
-            )
         time.sleep(self.config.control_dt)
 
 
