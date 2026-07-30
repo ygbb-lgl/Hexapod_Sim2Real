@@ -9,7 +9,7 @@ Run from the repository root::
 
     python deploy/deploy_real/merge_pre_tension_csv.py \
         --input-dir deploy/deploy_real/pre_data \
-        --output deploy/deploy_real/pre_data/merged_training_data.csv
+        --output deploy/deploy_real/pre_data/merged_training_data_0729_model9500.csv
 
 Optional file pattern::
 

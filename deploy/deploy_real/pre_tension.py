@@ -51,8 +51,8 @@ Inspect and train from the repository root (current logger is 50 Hz)::
         --expected-dt-s 0.02
 
     conda run -n isaacgym python deploy/deploy_real/pre_tension.py train \
-        --csv deploy/deploy_real/pre_data/merged_training_data_0728_8500_0728.pt.csv \
-        --output deploy/pre_train/hexapod_tethered/tension_model.pt \
+        --csv deploy/deploy_real/pre_data/merged_training_data_0729_model9500.csv \
+        --output deploy/pre_train/hexapod_tethered/tension_model_0729_model9500.pt \
         --expected-dt-s 0.02
 
 For a true 250 Hz dataset, use ``--expected-dt-s 0.004`` instead.  Do not
@@ -240,10 +240,26 @@ class CsvTrajectories:
             try:
                 parsed = {}
                 for key in numeric:
+                    if key == "timestamp_ns":
+                        continue
                     source = key if key in row else aliases.get(key, key)
-                    parsed[key] = float(row[source])
-                parsed["timestamp_ns"] = int(float(row["timestamp_ns"]))
-                parsed["trajectory_id"] = row["trajectory_id"]
+                    value = row[source]
+                    # A logger can be stopped while writing its final row. Keep
+                    # that row as invalid so windows touching it are rejected,
+                    # matching the documented missing/NaN behavior.
+                    parsed[key] = (
+                        float("nan")
+                        if value is None or not value.strip()
+                        else float(value)
+                    )
+                timestamp = row["timestamp_ns"]
+                if timestamp is None or not timestamp.strip():
+                    raise ValueError("empty timestamp_ns")
+                parsed["timestamp_ns"] = int(float(timestamp))
+                trajectory_id = row["trajectory_id"]
+                if trajectory_id is None or not trajectory_id.strip():
+                    raise ValueError("empty trajectory_id")
+                parsed["trajectory_id"] = trajectory_id.strip()
             except (ValueError, TypeError) as exc:
                 raise ValueError(f"invalid numeric value at CSV line {line}: {exc}") from exc
             parsed["_finite"] = all(np.isfinite(parsed[k]) for k in numeric)
