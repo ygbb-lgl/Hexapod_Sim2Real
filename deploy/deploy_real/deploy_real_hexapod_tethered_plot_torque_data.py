@@ -475,7 +475,7 @@ class Controller:
             print("[WARNING] IMU start failed. Will use zero data.")
 
         # 六位力传感器初始化 RS232
-        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB0', baudrate=115200)
+        self.tension_sensor = CableTensionSensor(port='/dev/ttyUSB_cable_tension', baudrate=115200)
         self.tension_started = self.tension_sensor.start()
         if not self.tension_started:
             print("[WARNING] Tension sensor start failed. Will use zero data.")
@@ -716,14 +716,15 @@ class Controller:
 
     # 打印imu数据
     def print_imu_data(self):
-        vel = self.imu.get_linear_velocity()
-        grav = self.imu.get_gravity_acceleration()
-        if vel is not None and grav is not None:
-            for i in range(10):
-                print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
-                time.sleep(0.1)
-        else:
-            print("No IMU data available.")
+        for _ in range(10):
+            vel = self.imu.get_linear_velocity()
+            grav = self.imu.get_gravity_acceleration()
+            print(
+                f"Vel: [{vel[0]:+7.3f}, {vel[1]:+7.3f}, {vel[2]:+7.3f}] | "
+                f"Grav: [{grav[0]:+7.3f}, {grav[1]:+7.3f}, {grav[2]:+7.3f}]",
+                flush=True,
+            )
+            time.sleep(0.1)
 
     def print_pitch_angle(self):
         pitch_value = self.pitch_sensor.get_angle()

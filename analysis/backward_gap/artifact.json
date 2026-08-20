@@ -1,0 +1,808 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "六足机器人“实物无法后退”Sim2Real 技术诊断",
+    "description": "基于 2026-07-29 实物日志、部署代码、策略归一化器和电机 SDK 的证据化根因排序。",
+    "generatedAt": "2026-07-30T04:47:13+00:00",
+    "sources": [
+      {
+        "id": "src_derived",
+        "label": "本次离线诊断派生指标",
+        "path": "analysis/backward_gap/derived_metrics.json",
+        "query": {
+          "engine": "DuckDB",
+          "language": "sql",
+          "sql": "SELECT * FROM read_json_auto('analysis/backward_gap/derived_metrics.json');",
+          "description": "读取由分析脚本生成并复核的派生指标快照",
+          "tables_used": [
+            "analysis/backward_gap/derived_metrics.json"
+          ],
+          "filters": [
+            "后退：vx<-0.2 且 |vy|,|wz|<0.15",
+            "前进：vx>0.2 且 |vy|,|wz|<0.15",
+            "后腿摆动关节：policy index 7,8,16,17"
+          ],
+          "metric_definitions": [
+            "动作平均幅值：按 run×joint 先计算 |raw policy action| 均值，再等权平均",
+            "关节速度 RMS：按 run×joint 先计算 RMS，再等权平均",
+            "训练 z-score：(real observation - deployed normalizer mean) / deployed normalizer std"
+          ]
+        }
+      },
+      {
+        "id": "src_0729_joint",
+        "label": "2026-07-29 三次关节跟踪日志",
+        "path": "deploy/deploy_real/0729-data"
+      },
+      {
+        "id": "src_predata",
+        "label": "2026-07-29 同日带命令/IMU/张力的八次实物日志",
+        "path": "deploy/deploy_real/pre_data"
+      },
+      {
+        "id": "src_deploy",
+        "label": "当前 Sim2Real 主脚本",
+        "path": "deploy/deploy_real/deploy_real_hexapod_tethered_plot_torque.py"
+      },
+      {
+        "id": "src_imu",
+        "label": "Deta40 IMU Python SDK",
+        "path": "deploy/deploy_real/imu_sdk_deta40/imu_sdk.py"
+      },
+      {
+        "id": "src_motor_py",
+        "label": "电机 Python SDK",
+        "path": "deploy/deploy_real/motor_igh_sdk/el4090_motor_sdk.py"
+      },
+      {
+        "id": "src_motor_cpp",
+        "label": "官方 C 电机 SDK",
+        "path": "deploy/deploy_real/app_cpp/motor_control.c"
+      },
+      {
+        "id": "src_policy",
+        "label": "实际部署 TorchScript 策略",
+        "path": "deploy/pre_train/hexapod_tethered/policy_10000.pt"
+      }
+    ],
+    "cards": [
+      {
+        "id": "card_action_ratio",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "后退时四个后腿 HFE/KFE 的原始策略动作平均幅值相对前进明显收缩。",
+        "metrics": [
+          {
+            "label": "后退/前进动作幅值",
+            "field": "rear_action_ratio",
+            "format": "percent"
+          },
+          {
+            "label": "后退均值",
+            "field": "rear_action_back",
+            "format": "number"
+          },
+          {
+            "label": "前进均值",
+            "field": "rear_action_forward",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "card_hfe_tracking",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "六个 HFE 对目标变化的平均幅值传递，以及左右镜像后的同向静差。",
+        "metrics": [
+          {
+            "label": "HFE 动态增益",
+            "field": "hfe_dynamic_gain",
+            "format": "percent"
+          },
+          {
+            "label": "平均偏差（rad）",
+            "field": "hfe_side_adjusted_bias_rad",
+            "format": "number"
+          },
+          {
+            "label": "回归斜率",
+            "field": "hfe_regression_slope",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "card_dq_ratio",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "后退后腿关节速度 RMS 相对前进的比例。",
+        "metrics": [
+          {
+            "label": "后退/前进速度 RMS",
+            "field": "rear_dq_ratio",
+            "format": "percent"
+          },
+          {
+            "label": "后退 RMS",
+            "field": "rear_dq_back",
+            "format": "number"
+          },
+          {
+            "label": "前进 RMS",
+            "field": "rear_dq_forward",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "card_cable_z",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "实物张力观测相对策略训练归一化分布的偏离。",
+        "metrics": [
+          {
+            "label": "张力中位偏离（σ）",
+            "field": "cable_median_z",
+            "format": "number"
+          },
+          {
+            "label": "P95 偏离（σ）",
+            "field": "cable_p95_z",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "card_gravity_z",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "重力 x 观测相对策略训练归一化分布的偏离。",
+        "metrics": [
+          {
+            "label": "重力 x 中位偏离（σ）",
+            "field": "gravity_x_median_z",
+            "format": "number"
+          },
+          {
+            "label": "超过 3σ 的样本",
+            "field": "gravity_x_gt3_share",
+            "format": "percent"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "chart_rear_ratio",
+        "title": "后退后腿响应相对前进的比例",
+        "subtitle": "策略动作和关节速度均显著收缩，衰减在电机执行前已经出现。",
+        "type": "bar",
+        "intent": "comparison",
+        "dataset": "rear_response_ratio",
+        "sourceId": "src_derived",
+        "encodings": {
+          "x": {
+            "field": "metric",
+            "type": "nominal",
+            "label": "后腿响应指标"
+          },
+          "y": {
+            "field": "backward_vs_forward",
+            "type": "quantitative",
+            "format": "percent",
+            "label": "后退 / 前进"
+          }
+        },
+        "valueFormat": "percent",
+        "settings": {
+          "showValues": true,
+          "sort": "none"
+        },
+        "layout": "full"
+      },
+      {
+        "id": "chart_hfe_backward_forward",
+        "title": "前进与后退的后腿 HFE 目标—实际幅值",
+        "subtitle": "八次同日带命令日志；数值为 RB_HFE/LB_HFE 按 run×joint 等权平均的标准差或绝对偏差。",
+        "type": "bar",
+        "intent": "comparison",
+        "dataset": "hfe_backward_forward_chart",
+        "sourceId": "src_derived",
+        "encodings": {
+          "x": {
+            "field": "direction_label",
+            "type": "nominal",
+            "label": "运动方向"
+          },
+          "y": {
+            "field": "value_rad",
+            "type": "quantitative",
+            "label": "角度尺度",
+            "unit": "rad"
+          },
+          "color": {
+            "field": "metric",
+            "type": "nominal",
+            "label": "指标"
+          }
+        },
+        "unit": "rad",
+        "settings": {
+          "groupMode": "grouped",
+          "showValues": true
+        },
+        "palette": {
+          "kind": "categorical"
+        },
+        "legend": {
+          "position": "bottom",
+          "title": "指标"
+        },
+        "layout": "full"
+      },
+      {
+        "id": "chart_ood",
+        "title": "实物观测相对训练分布的中位偏离",
+        "subtitle": "张力和重力 x 是唯一大范围越过 3σ 的已记录策略输入。",
+        "type": "bar",
+        "intent": "comparison",
+        "dataset": "observation_ood_chart",
+        "sourceId": "src_derived",
+        "encodings": {
+          "x": {
+            "field": "feature_label",
+            "type": "nominal",
+            "label": "观测特征"
+          },
+          "y": {
+            "field": "median_abs_z",
+            "type": "quantitative",
+            "label": "中位绝对 z-score",
+            "unit": "σ"
+          }
+        },
+        "unit": "σ",
+        "referenceLines": [
+          {
+            "axis": "y",
+            "value": 3,
+            "label": "3σ 阈值",
+            "lineStyle": "dashed",
+            "color": "red"
+          }
+        ],
+        "settings": {
+          "showValues": true,
+          "sort": "descending"
+        },
+        "layout": "full"
+      },
+      {
+        "id": "chart_tracking",
+        "title": "关节类型的实物跟踪误差",
+        "subtitle": "HFE 的静差和 RMSE 明显高于 HAA/KFE，是后退抬腿失效的直接执行侧机制。",
+        "type": "bar",
+        "intent": "comparison",
+        "dataset": "tracking_by_joint_type_chart",
+        "sourceId": "src_derived",
+        "encodings": {
+          "x": {
+            "field": "joint_type",
+            "type": "nominal",
+            "label": "关节类型"
+          },
+          "y": {
+            "field": "value_rad",
+            "type": "quantitative",
+            "label": "角度误差",
+            "unit": "rad"
+          },
+          "color": {
+            "field": "metric",
+            "type": "nominal",
+            "label": "误差指标"
+          }
+        },
+        "unit": "rad",
+        "settings": {
+          "groupMode": "grouped",
+          "showValues": true
+        },
+        "palette": {
+          "kind": "categorical"
+        },
+        "legend": {
+          "position": "bottom",
+          "title": "误差指标"
+        },
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "table_root_causes",
+        "title": "根因排序与最小验证",
+        "subtitle": "先区分 HFE 无负载零位、承重下垂和驱动限流，再修正导致后退目标过小的观测契约。",
+        "dataset": "root_causes",
+        "sourceId": "src_derived",
+        "defaultSort": {
+          "field": "priority",
+          "direction": "asc"
+        },
+        "density": "spacious",
+        "columns": [
+          {
+            "field": "priority",
+            "label": "优先级",
+            "type": "number"
+          },
+          {
+            "field": "finding",
+            "label": "候选根因",
+            "type": "text"
+          },
+          {
+            "field": "evidence",
+            "label": "证据",
+            "type": "text"
+          },
+          {
+            "field": "confidence",
+            "label": "置信度",
+            "type": "text"
+          },
+          {
+            "field": "recommended_test",
+            "label": "最小验证",
+            "type": "text"
+          }
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "table_sensitivity",
+        "title": "离线策略单因素敏感性测试",
+        "subtitle": "以 406 个真实后退状态采样；缺失的线速度/末端角使用受控替代，因此用于排序而非闭环证明。",
+        "dataset": "policy_sensitivity",
+        "sourceId": "src_derived",
+        "defaultSort": {
+          "field": "rear_action_rms_delta_vs_reference",
+          "direction": "desc"
+        },
+        "density": "dense",
+        "columns": [
+          {
+            "field": "scenario",
+            "label": "场景",
+            "type": "text"
+          },
+          {
+            "field": "samples",
+            "label": "样本",
+            "type": "number"
+          },
+          {
+            "field": "rear_action_abs_mean",
+            "label": "后腿 |action| 均值",
+            "type": "number"
+          },
+          {
+            "field": "rear_action_joint_mean_std",
+            "label": "跨样本平均标准差",
+            "type": "number"
+          },
+          {
+            "field": "rear_action_rms_delta_vs_reference",
+            "label": "相对基准 RMS 改变量",
+            "type": "number"
+          }
+        ],
+        "layout": "full"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# 六足机器人“实物无法后退”Sim2Real 技术诊断",
+        "layout": "full"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "layout": "full",
+        "body": "## 技术结论\n\n直接失效机制是**后退 HFE 目标太小，又被实物 HFE 的承重偏差和低动态增益吞掉**。0729 两次可用日志中，六个 HFE 左右镜像后的平均偏差为 **0.113 rad**，动态增益仅 **56.2%**，目标—实际回归斜率约 **0.419**。\n\n同日带命令日志中，后退 RB/LB_HFE 目标标准差只有 **0.089 rad**，与其平均绝对偏差 **0.080 rad** 同量级；前进目标标准差则为 **0.251 rad**。因此前进能越过下垂区间，后退指令则很容易在实际关节上消失。\n\n上游观测错配仍然重要，因为它解释了为什么后退目标异常偏小：obs[67] 张力中位偏离训练分布 **20.35σ**，重力 x 偏离 **5.24σ**，线速度回退估计还使用了不一致的重力公式。"
+      },
+      {
+        "id": "headline_metrics_block",
+        "type": "metric-strip",
+        "cardIds": [
+          "card_action_ratio",
+          "card_hfe_tracking",
+          "card_dq_ratio",
+          "card_cable_z",
+          "card_gravity_z"
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 范围与数据可用性\n\n0729-data 三个目录中，10:50:57 和 10:59:10 各有 18 个可用关节 CSV；10:55:29 的 18 个 CSV 均为 0 字节。关节 CSV 没有记录速度命令、IMU、张力、电流或故障码，因此不能把其中某个时间窗直接标成前进/后退。\n\n方向对比采用同日稍后的八次 81 列带命令日志作为支持证据。它们来自带数据记录的脚本版本，不是对 10:50 三次实验的逐帧复原。"
+      },
+      {
+        "id": "rear_ratio_block",
+        "type": "chart",
+        "chartId": "chart_rear_ratio",
+        "layout": "full"
+      },
+      {
+        "id": "hfe_direct_mechanism",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "layout": "full",
+        "body": "## HFE 的 target—actual 差异足以吞掉后退摆幅\n\n你的观察是对的：HFE 不是简单的 40–80 ms 滞后。去均值后的动态增益只有 0.562，线性回归斜率只有 0.419。右侧三个 HFE 的 actual−target 平均为正，左侧三个平均为负；镜像到同一物理方向后，两侧分别约 0.113 rad。这更像同一方向的承重下垂，不是随机编码器噪声。\n\n在带命令日志中，后退 HFE 目标波动 0.089 rad、实际波动 0.059 rad、绝对偏差 0.080 rad；前进对应值为 0.251/0.191/0.087 rad。后退目标与偏差同量级，所以策略虽然发出小幅动作，实体后腿仍可能完全不离地。"
+      },
+      {
+        "id": "hfe_backward_forward_block",
+        "type": "chart",
+        "chartId": "chart_hfe_backward_forward",
+        "layout": "full"
+      },
+      {
+        "id": "observation_contract",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "layout": "full",
+        "body": "## 观测契约是首要故障面\n\n部署策略的归一化器显示，训练张力均值/标准差约为 −3.82/7.37；实物日志张力中位数约 +146 N。不能只把它看成传感器噪声，也不能只做简单取反：符号、单位和物理量定义都需要与 MuJoCo tendon actuator force 对齐。\n\n线速度通道风险更隐蔽。Deta40 没有新鲜 INSGPS 速度时，会积分加速度作为速度；但单 IMU 平移速度不可观，而且代码的重力补偿 gx/gy 与策略重力向量 gx/gy 公式不同。八次日志中有 5 次的均值出现 |a_x+9.81·g_x|>3 m/s²，说明加速度轴和策略重力至少有一处符号/外参不一致。现有日志没有记录最终送入 obs[0:3] 的值，必须先补日志才能闭环定责。"
+      },
+      {
+        "id": "ood_block",
+        "type": "chart",
+        "chartId": "chart_ood",
+        "layout": "full"
+      },
+      {
+        "id": "actuation_findings",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "layout": "full",
+        "body": "## HFE 闭环刚度/限流需要独立于额定扭矩验证\n\n两次可用关节日志中，HFE 平均绝对静差为 0.113 rad，平均跟踪 RMSE 为 0.156 rad，动态增益约 0.562。额定 90 N·m 只说明峰值能力，不能证明当前 Kp 字段等于 80 N·m/rad，也不能证明驱动没有电流、母线电压、温度或速度限幅。在没有相电流和 fault/limit flag 的情况下，不能用铭牌扭矩排除执行侧问题。\n\njoint2motor 映射、方向变换和位置回读的相关性为正，说明不是整体符号接反。但如果只是固定 encoder offset，去均值后的动态增益应该接近 1；现在只有约 0.56，所以仅重标 motor_offsets 不能完整修复，必须区分无负载零位偏差与承重闭环下垂。官方 C SDK 的 torque/current 编码范围与 Python 端不同，但腿部命令的 feedforward torque 当前为 0，所以该差异不会造成这次位置目标方向性失效；它会污染将来的电流/扭矩解释。"
+      },
+      {
+        "id": "tracking_block",
+        "type": "chart",
+        "chartId": "chart_tracking",
+        "layout": "full"
+      },
+      {
+        "id": "ranked_causes",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 根因排序\n\n优先级现在区分“直接机制”和“上游原因”：HFE target—actual 偏差是后腿不抬的直接机制；张力、重力和线速度错配是后退目标过小的主要上游候选。动作限幅版本不一致影响复现；单纯 URDF 加重或引用额定峰值扭矩仍排在最后。"
+      },
+      {
+        "id": "root_causes_block",
+        "type": "table",
+        "tableId": "table_root_causes",
+        "layout": "full"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "layout": "full",
+        "body": "## 方法与离线验证\n\n方向段使用 |vy|、|wz|<0.15 排除明显横移/旋转，并对八次 run×四个后腿关节等权汇总。训练分布来自实际部署 TorchScript 内置 normalizer；其 actor 权重和 normalizer 与 20260514-222508 的 model_10000 检查点逐张量完全一致。\n\n策略敏感性测试固定真实 q、dq、gravity、gyro、command 和上一帧动作，只替换线速度 x 与张力。它用于证明策略会对这些错配产生大幅动作变化，不是实物闭环因果证明。"
+      },
+      {
+        "id": "sensitivity_block",
+        "type": "table",
+        "tableId": "table_sensitivity",
+        "layout": "full"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 限制与稳健性\n\n精确的 10:50 三次关节日志缺少 command、obs[0:70]、原始未限幅 action、电流/扭矩、驱动故障码和控制周期抖动；中间一次日志为空。所以不能仅凭这些 CSV 区分“策略没发抬腿”与“发了但因接触/摩擦没抬”。\n\n不过，同日带命令日志直接显示后退动作已在策略输出侧收缩；观测 z-score 又把异常集中在张力和重力 x；同时，两个独立日志源都显示 HFE target—actual 的同向偏差和幅值衰减。因此“弱后退目标 + HFE 承重跟踪不足”这一两级解释，对合理阈值和汇总方式较稳健。"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 建议的最小排查顺序\n\n1. **先验证 HFE 执行链**：机器人离地，对六个 HFE 做 ±0.1/±0.2 rad 阶跃和低频扫频；随后在安全支撑承重下重复。记录目标角、实际角、相电流、母线电压、温度、fault 和限流标志。\n2. 比较无负载与承重结果：无负载仍有约 0.11 rad 偏差优先查 offset/编码；无负载正常而承重下垂则查实际闭环刚度、电流限幅、减速器摩擦和重力补偿。\n3. **仍不落地行走**：静止 10 秒记录 velocity_source、obs[0:70]、归一化 z-score、raw action 与 clipped action。校正 IMU→URDF 外参，并让速度补偿与策略重力使用同一旋转定义；若没有可靠平移速度源，先做 obs[0:3]=0 的支撑/悬空 A/B，随后用本体估计器或重新训练无速度策略。\n4. 对齐 obs[67] 的物理量、符号和单位；在支撑条件下先用训练均值 −3.82 做单变量 A/B，不要直接在地面高速测试，也不要只做简单取反。\n5. 冻结代码/配置/策略哈希并统一动作限幅。当前训练 leg_action_clip=null，主脚本却是 ±2；如需限幅，应把同一限幅放回训练。\n6. 以上通过后，才继续做 URDF 惯量、足地摩擦和执行器模型辨识。"
+      },
+      {
+        "id": "questions",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 仍需确认的问题\n\n最关键的四个现场答案是：该次运行是否真的收到新鲜 INSGPS 速度；机器人水平静止时 obs gravity 是否仍有约 ±0.42 的 x 分量；张力传感器的 +N 与 MuJoCo tendon actuator force 的符号/标定关系；以及 10:50 实验运行的确切 Git 提交和脚本版本。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-30T04:47:13+00:00",
+    "status": "ready",
+    "datasets": {
+      "headline_metrics": [
+        {
+          "rear_action_ratio": 0.3415717636836842,
+          "rear_action_back": 0.26560281785624046,
+          "rear_action_forward": 0.7775900882199516,
+          "rear_dq_ratio": 0.3919155863484577,
+          "rear_dq_back": 0.7895310650272584,
+          "rear_dq_forward": 2.014543673507476,
+          "cable_median_z": 20.351749690212102,
+          "cable_p95_z": 33.253921364198895,
+          "gravity_x_median_z": 5.241007272162573,
+          "gravity_x_gt3_share": 1.0,
+          "hfe_side_adjusted_bias_rad": 0.11279831303323823,
+          "hfe_dynamic_gain": 0.561799477322447,
+          "hfe_regression_slope": 0.4189133367374384
+        }
+      ],
+      "rear_response_ratio": [
+        {
+          "metric": "策略动作平均幅值",
+          "backward_vs_forward": 0.3415717636836842
+        },
+        {
+          "metric": "关节位置峰峰值",
+          "backward_vs_forward": 0.624555822060343
+        },
+        {
+          "metric": "关节速度 RMS",
+          "backward_vs_forward": 0.3919155863484577
+        }
+      ],
+      "hfe_backward_forward_chart": [
+        {
+          "direction": "back",
+          "direction_label": "后退",
+          "metric": "目标波动标准差",
+          "value_rad": 0.08868020276742453
+        },
+        {
+          "direction": "back",
+          "direction_label": "后退",
+          "metric": "实际波动标准差",
+          "value_rad": 0.0589492897202976
+        },
+        {
+          "direction": "back",
+          "direction_label": "后退",
+          "metric": "平均绝对偏差",
+          "value_rad": 0.08033466456240507
+        },
+        {
+          "direction": "forward",
+          "direction_label": "前进",
+          "metric": "目标波动标准差",
+          "value_rad": 0.25115302906537407
+        },
+        {
+          "direction": "forward",
+          "direction_label": "前进",
+          "metric": "实际波动标准差",
+          "value_rad": 0.19106766582615298
+        },
+        {
+          "direction": "forward",
+          "direction_label": "前进",
+          "metric": "平均绝对偏差",
+          "value_rad": 0.08663772770027131
+        }
+      ],
+      "observation_ood_chart": [
+        {
+          "feature": "cable_force",
+          "feature_label": "绳索张力 obs[67]",
+          "median_abs_z": 20.351749690212102,
+          "p95_abs_z": 33.253921364198895,
+          "share_gt_3sigma": 0.9983703458181417
+        },
+        {
+          "feature": "gravity_x",
+          "feature_label": "重力 x obs[6]",
+          "median_abs_z": 5.241007272162573,
+          "p95_abs_z": 6.255677856551155,
+          "share_gt_3sigma": 1.0
+        },
+        {
+          "feature": "gravity_z",
+          "feature_label": "重力 z obs[8]",
+          "median_abs_z": 1.2026017709696197,
+          "p95_abs_z": 1.755358515005215,
+          "share_gt_3sigma": 0.0
+        },
+        {
+          "feature": "q_16",
+          "feature_label": "LB_HFE 位置",
+          "median_abs_z": 1.0860069249519984,
+          "p95_abs_z": 1.842860546177566,
+          "share_gt_3sigma": 0.0
+        }
+      ],
+      "tracking_by_joint_type_chart": [
+        {
+          "joint_type": "HAA",
+          "metric": "跟踪 RMSE",
+          "value_rad": 0.07328231166104412
+        },
+        {
+          "joint_type": "HAA",
+          "metric": "平均绝对偏差",
+          "value_rad": 0.018179468612967844
+        },
+        {
+          "joint_type": "HFE",
+          "metric": "跟踪 RMSE",
+          "value_rad": 0.15606841902326252
+        },
+        {
+          "joint_type": "HFE",
+          "metric": "平均绝对偏差",
+          "value_rad": 0.11279831303323823
+        },
+        {
+          "joint_type": "KFE",
+          "metric": "跟踪 RMSE",
+          "value_rad": 0.06156414060061969
+        },
+        {
+          "joint_type": "KFE",
+          "metric": "平均绝对偏差",
+          "value_rad": 0.025981394556566843
+        }
+      ],
+      "root_causes": [
+        {
+          "priority": 1,
+          "finding": "后退 HFE 目标太小，被实物 HFE 的同向下垂和低动态增益吞掉",
+          "evidence": "0729 六个 HFE 左右镜像后的平均偏差为 0.113 rad，动态增益 0.562；同日后退目标标准差仅 0.089 rad",
+          "confidence": "高（直接机制）",
+          "recommended_test": "先做离地无负载，再做支撑承重的 HFE 阶跃/扫频；同时记录相电流和驱动限流状态"
+        },
+        {
+          "priority": 2,
+          "finding": "obs[67] 绳索张力符号/尺度与训练严重不一致",
+          "evidence": "实物中位数为训练均值以上 20.35σ；99.8% 样本超过 3σ",
+          "confidence": "高",
+          "recommended_test": "悬空/支撑条件下把 obs[67] 暂置训练均值 −3.82，只做低速动作 A/B"
+        },
+        {
+          "priority": 3,
+          "finding": "线速度回退估计不可观且重力补偿公式与策略重力公式不一致",
+          "evidence": "IMU 文件对同一四元数使用两套不同的 gx/gy 公式；线速度未被现有日志记录",
+          "confidence": "代码缺陷高、该次运行触发情况中等",
+          "recommended_test": "静止 10 秒记录 velocity_source、linvel、两套重力向量及补偿后加速度"
+        },
+        {
+          "priority": 4,
+          "finding": "重力 x 观测越界或 IMU 安装/坐标变换不一致",
+          "evidence": "重力 x 中位绝对偏差 5.24σ，100.0% 样本超过 3σ；5/8 次日志的均值满足 |a_x+9.81·g_x|>3 m/s²",
+          "confidence": "高",
+          "recommended_test": "机器人水平静止时校验 acc + 9.81·gravity≈0，并固定 IMU→URDF 外参"
+        },
+        {
+          "priority": 5,
+          "finding": "当前脚本与日志的动作限幅版本不一致",
+          "evidence": "当前主脚本限幅 ±2，但两次可用 0729 日志均包含 |action|>2 的样本",
+          "confidence": "高（复现性问题）",
+          "recommended_test": "冻结一次部署提交和配置哈希；训练和部署统一动作限幅"
+        },
+        {
+          "priority": 6,
+          "finding": "单纯增加 URDF 质量或引用 90 N·m 额定扭矩即可解释",
+          "evidence": "HFE 有明确承重偏差和低闭环增益；额定峰值不等于当前控制器实际输出电流/关节刚度",
+          "confidence": "低概率",
+          "recommended_test": "获取相电流/母线电压/限流标志后，再辨识实物 Kp 到输出力矩的真实映射"
+        }
+      ],
+      "policy_sensitivity": [
+        {
+          "scenario": "匹配后退速度 + 训练典型张力",
+          "samples": 406,
+          "rear_action_abs_mean": 0.5967036485671997,
+          "rear_action_joint_mean_std": 0.6016446352005005,
+          "rear_action_rms_delta_vs_reference": 0.0
+        },
+        {
+          "scenario": "零线速度 + 训练典型张力",
+          "samples": 406,
+          "rear_action_abs_mean": 0.5765954256057739,
+          "rear_action_joint_mean_std": 0.5933567881584167,
+          "rear_action_rms_delta_vs_reference": 0.25678154826164246
+        },
+        {
+          "scenario": "错误 +0.5 m/s + 训练典型张力",
+          "samples": 406,
+          "rear_action_abs_mean": 0.6557427644729614,
+          "rear_action_joint_mean_std": 0.6152202486991882,
+          "rear_action_rms_delta_vs_reference": 0.5207117199897766
+        },
+        {
+          "scenario": "匹配后退速度 + 实物张力",
+          "samples": 406,
+          "rear_action_abs_mean": 0.7762094140052795,
+          "rear_action_joint_mean_std": 0.3631735146045685,
+          "rear_action_rms_delta_vs_reference": 0.6759546995162964
+        },
+        {
+          "scenario": "错误 +0.5 m/s + 实物张力",
+          "samples": 406,
+          "rear_action_abs_mean": 0.7193729877471924,
+          "rear_action_joint_mean_std": 0.36048316955566406,
+          "rear_action_rms_delta_vs_reference": 0.8081278800964355
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "src_derived",
+      "label": "本次离线诊断派生指标",
+      "path": "analysis/backward_gap/derived_metrics.json",
+      "query": {
+        "engine": "DuckDB",
+        "language": "sql",
+        "sql": "SELECT * FROM read_json_auto('analysis/backward_gap/derived_metrics.json');",
+        "description": "读取由分析脚本生成并复核的派生指标快照",
+        "tables_used": [
+          "analysis/backward_gap/derived_metrics.json"
+        ],
+        "filters": [
+          "后退：vx<-0.2 且 |vy|,|wz|<0.15",
+          "前进：vx>0.2 且 |vy|,|wz|<0.15",
+          "后腿摆动关节：policy index 7,8,16,17"
+        ],
+        "metric_definitions": [
+          "动作平均幅值：按 run×joint 先计算 |raw policy action| 均值，再等权平均",
+          "关节速度 RMS：按 run×joint 先计算 RMS，再等权平均",
+          "训练 z-score：(real observation - deployed normalizer mean) / deployed normalizer std"
+        ]
+      }
+    },
+    {
+      "id": "src_0729_joint",
+      "label": "2026-07-29 三次关节跟踪日志",
+      "path": "deploy/deploy_real/0729-data"
+    },
+    {
+      "id": "src_predata",
+      "label": "2026-07-29 同日带命令/IMU/张力的八次实物日志",
+      "path": "deploy/deploy_real/pre_data"
+    },
+    {
+      "id": "src_deploy",
+      "label": "当前 Sim2Real 主脚本",
+      "path": "deploy/deploy_real/deploy_real_hexapod_tethered_plot_torque.py"
+    },
+    {
+      "id": "src_imu",
+      "label": "Deta40 IMU Python SDK",
+      "path": "deploy/deploy_real/imu_sdk_deta40/imu_sdk.py"
+    },
+    {
+      "id": "src_motor_py",
+      "label": "电机 Python SDK",
+      "path": "deploy/deploy_real/motor_igh_sdk/el4090_motor_sdk.py"
+    },
+    {
+      "id": "src_motor_cpp",
+      "label": "官方 C 电机 SDK",
+      "path": "deploy/deploy_real/app_cpp/motor_control.c"
+    },
+    {
+      "id": "src_policy",
+      "label": "实际部署 TorchScript 策略",
+      "path": "deploy/pre_train/hexapod_tethered/policy_10000.pt"
+    }
+  ]
+}

@@ -29,7 +29,7 @@ def _maybe_build_obs_normalizer_from_state_dict(state_dict):
             self.register_buffer("std", std_t)
 
         def forward(self, x):
-            return (x - self.mean) / (self.std + 1e-8)
+            return (x - self.mean) / (self.std + 0.01)
 
     print(f"Built ObsNorm with dim={mean.shape[0]}")
     return _ObsNorm(mean, std)
@@ -106,8 +106,8 @@ class PolicyWrapper(nn.Module):
 
 
 if __name__ == "__main__":
-    path = "/home/hexapod/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/model_8000.pt"
-    save_path = "/home/hexapod/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/policy_8000.pt"
+    path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/0803/model_7000.pt"
+    save_path = "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/0803/policy_7000.pt"
 
     print(f"Loading checkpoint from: {path}")
     checkpoint = torch.load(path, map_location='cpu')

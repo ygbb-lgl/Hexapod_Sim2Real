@@ -553,14 +553,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group2:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group3:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -669,14 +669,15 @@ class Controller:
 
     # 打印imu数据
     def print_imu_data(self):
-        vel = self.imu.get_linear_velocity()
-        grav = self.imu.get_gravity_acceleration()
-        if vel is not None and grav is not None:
-            for i in range(10):
-                print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
-                time.sleep(0.1)
-        else:
-            print("No IMU data available.")
+        for _ in range(10):
+            vel = self.imu.get_linear_velocity()
+            grav = self.imu.get_gravity_acceleration()
+            print(
+                f"Vel: [{vel[0]:+7.3f}, {vel[1]:+7.3f}, {vel[2]:+7.3f}] | "
+                f"Grav: [{grav[0]:+7.3f}, {grav[1]:+7.3f}, {grav[2]:+7.3f}]",
+                flush=True,
+            )
+            time.sleep(0.1)
 
     def print_pitch_angle(self):
         pitch_value = self.pitch_sensor.get_angle()
@@ -790,8 +791,8 @@ class Controller:
         
         #self.obs[67] = np.float32(0)
         self.obs[67] = np.float32(tension_value)
-        #self.obs[68] = np.float32(0)
-        self.obs[68] = np.float32(yaw_differ_value)
+        self.obs[68] = np.float32(0)
+        #self.obs[68] = np.float32(yaw_differ_value)
         self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
@@ -799,7 +800,7 @@ class Controller:
             self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
         # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
-        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
         self.action[18] = np.clip(self.action[18], 0.0, 2.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
@@ -867,6 +868,7 @@ class Controller:
         )
 
         torque_limit = abs(float(self.config.tsc_torque_limit))
+        takeover_alpha = 0.5 if float(cmd[0]) > 0.1 else 0.0
 
         spool_torque_cmd, self.last_tension_selector_debug = self.tension_selector.step(
             timestamp_ns=observation_timestamp_ns,
@@ -886,7 +888,7 @@ class Controller:
             hardware_torque_min_nm=-torque_limit,
             hardware_torque_max_nm=torque_limit,
             # 按 alpha 融合传统控制器与模型候选；shadow_mode=True 时仅预测、不接管控制。
-            alpha=0.8,# 这个1.0就是全走模型，0.0全是base
+            alpha=takeover_alpha,  # cmd[0] > 0.1 时启用模型融合，否则全部使用 base
             shadow_mode=False,
             data_valid=bool(imu_valid and tension_sensor_valid),
             emergency=False,

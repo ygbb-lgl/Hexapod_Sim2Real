@@ -1,0 +1,477 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "六足机器人后退倾覆：Sim2Real 复核与勘误",
+    "description": "基于两组 2026-07-29 电机日志、logged-target MuJoCo 回放及 IsaacGym safe 配置的非奖励项复核。",
+    "generatedAt": "2026-08-16T17:54:48+08:00",
+    "sources": [
+      {
+        "id": "src_derived",
+        "label": "本次可重跑派生指标",
+        "path": "analysis/backward_gap_reaudit_20260816/report_source.sqlite",
+        "query": {
+          "engine": "SQLite",
+          "language": "sql",
+          "sql": "SELECT dataset, row_order, row_json FROM report_rows ORDER BY dataset, row_order",
+          "description": "读取本报告已复核的有界快照行；原始计算由 analyze_reaudit.py 与 derived_metrics.json 提供。",
+          "tables_used": ["report_rows"],
+          "filters": ["仅包含 artifact.json snapshot.datasets 中的已复核汇总行"],
+          "metric_definitions": [
+            "residual = actual_pos - target_pos",
+            "越过仿真控制范围：HAA |target|>0.8；HFE/KFE |target|>0.6",
+            "静态回放 MAE：105057 前 1000 帧、六个同类关节和全部帧上的 |actual-target| 均值",
+            "周期推断：18 个独立 CSV 的关闭 mtime 对最终 counter 做线性回归",
+            "IMU 静止旁证：imu_valid=1、|command|<0.02、|gyro|<0.05 rad/s、18 关节 dq RMS<0.15 rad/s"
+          ]
+        }
+      },
+      {
+        "id": "src_logs",
+        "label": "2026-07-29 两组逐电机关节日志",
+        "path": "deploy/deploy_real/0729-data"
+      },
+      {
+        "id": "src_deploy",
+        "label": "MuJoCo 策略实机部署与 EtherCAT 线程",
+        "path": "deploy/deploy_real/deploy_real_hexapod_tethered.py"
+      },
+      {
+        "id": "src_imu",
+        "label": "DETA40 IMU 观测实现",
+        "path": "deploy/deploy_real/imu_sdk_deta40/imu_sdk.py"
+      },
+      {
+        "id": "src_mujoco",
+        "label": "MuJoCo joystick、randomizer 与 flat XML",
+        "path": "mujoco_hexapod/mujoco_playground/_src/locomotion/hexapod_tethered_04"
+      },
+      {
+        "id": "src_isaac",
+        "label": "IsaacGym el_4090 safe 配置与环境",
+        "path": "extended_legged_gym-feat-el_4090/legged_gym/legged_gym/envs/el_4090/safe"
+      }
+    ],
+    "cards": [
+      {
+        "id": "card_hfe_replay",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "105057 前 1000 帧为近静态承重段；实物 HFE 静差在当前 MuJoCo 模型中基本复现。",
+        "metrics": [
+          {"label": "实物 HFE MAE", "field": "hfe_real_mae_rad", "format": "number"},
+          {"label": "MuJoCo HFE MAE", "field": "hfe_sim_mae_rad", "format": "number"}
+        ]
+      },
+      {
+        "id": "card_period",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "105057 由独立 CSV 关闭时刻反推；这是历史证据，不替代逐帧 monotonic timestamp。",
+        "metrics": [
+          {"label": "实物策略周期（ms）", "field": "inferred_period_ms", "format": "number"},
+          {"label": "推断频率（Hz）", "field": "inferred_frequency_hz", "format": "number"}
+        ]
+      },
+      {
+        "id": "card_haa_range",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "105910 中只有 HAA 越过当前 MuJoCo ±0.8 控制范围；日志没有 command，不能归因于后退。",
+        "metrics": [
+          {"label": "HAA 最大目标（rad）", "field": "haa_105910_max_abs_target_rad", "format": "number"},
+          {"label": "越过 ±0.8 的样本", "field": "haa_105910_over_sim_count", "format": "number"}
+        ]
+      },
+      {
+        "id": "card_atacom",
+        "dataset": "headline_metrics",
+        "sourceId": "src_derived",
+        "description": "Isaac safe 环境的 actor 与执行路径均耦合 ATACOM；它不是裸 PPO 对照。",
+        "metrics": [
+          {"label": "pitch/roll 限值（rad）", "field": "isaac_atacom_tilt_limit_rad", "format": "number"},
+          {"label": "Isaac actor 观测维数", "field": "isaac_actor_obs_dim", "format": "number"}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "chart_static_hfe",
+        "title": "近静态 HFE 承重残差：实物与 MuJoCo",
+        "subtitle": "105057 前 1000 帧；符号为 actual−target。左右镜像符号相反是位置 PD 产生承重力矩的正常表现。",
+        "type": "bar",
+        "intent": "comparison",
+        "dataset": "static_hfe_chart",
+        "sourceId": "src_derived",
+        "encodings": {
+          "x": {"field": "joint", "type": "nominal", "label": "HFE 关节"},
+          "y": {"field": "bias_rad", "type": "quantitative", "label": "actual − target", "unit": "rad"},
+          "color": {"field": "system", "type": "nominal", "label": "系统"}
+        },
+        "unit": "rad",
+        "settings": {"groupMode": "grouped", "showValues": true, "sort": "none"},
+        "palette": {"kind": "categorical"},
+        "legend": {"position": "bottom", "title": "系统"},
+        "layout": "full"
+      }
+    ],
+    "tables": [
+      {
+        "id": "table_corrections",
+        "title": "本次复核对旧判断的勘误",
+        "subtitle": "只保留能由当前两组日志或 logged-target 回放支持的结论。",
+        "dataset": "corrections",
+        "sourceId": "src_derived",
+        "density": "spacious",
+        "columns": [
+          {"field": "claim", "label": "待复核判断", "type": "text"},
+          {"field": "status", "label": "复核状态", "type": "text"},
+          {"field": "evidence", "label": "证据", "type": "text"},
+          {"field": "meaning", "label": "现在应如何解释", "type": "text"}
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "table_ranges",
+        "title": "两组日志逐关节类型目标范围",
+        "subtitle": "仿真范围取当前注册 flat task：HAA ±0.8，HFE/KFE ±0.6 rad。",
+        "dataset": "joint_ranges",
+        "sourceId": "src_derived",
+        "defaultSort": {"field": "run_joint", "direction": "asc"},
+        "density": "dense",
+        "columns": [
+          {"field": "run_joint", "label": "实验 / 关节类型", "type": "text"},
+          {"field": "samples", "label": "样本数", "type": "number"},
+          {"field": "max_abs_target_rad", "label": "最大 |target|（rad）", "type": "number"},
+          {"field": "sim_limit_rad", "label": "仿真限值（rad）", "type": "number"},
+          {"field": "over_limit_count", "label": "越限样本", "type": "number"},
+          {"field": "interpretation", "label": "解释", "type": "text"}
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "table_parameters",
+        "title": "MuJoCo 与 IsaacGym 的非奖励项逐项对照",
+        "subtitle": "比较当前源代码配置；不假定它等于机器人电脑上的确切副本。",
+        "dataset": "parameter_comparison",
+        "sourceId": "src_derived",
+        "density": "dense",
+        "columns": [
+          {"field": "item", "label": "项目", "type": "text"},
+          {"field": "mujoco", "label": "MuJoCo playground", "type": "text"},
+          {"field": "isaac", "label": "IsaacGym safe", "type": "text"},
+          {"field": "diagnostic_meaning", "label": "诊断意义", "type": "text"}
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "table_imu_side_evidence",
+        "title": "同日 12:xx 静止 IMU 旁证",
+        "subtitle": "不是 10:50/10:59 精确 motor log；筛选 imu_valid、低命令、低角速度和低关节速度的静止行。",
+        "dataset": "imu_side_evidence",
+        "sourceId": "src_derived",
+        "density": "spacious",
+        "columns": [
+          {"field": "period", "label": "日志组", "type": "text"},
+          {"field": "static_samples", "label": "静止样本", "type": "number"},
+          {"field": "gravity_x_median", "label": "gravity_x 中位数", "type": "number"},
+          {"field": "accel_x_median_mps2", "label": "accel_x 中位数（m/s²）", "type": "number"},
+          {"field": "alignment_cosine", "label": "cos(a/|a|, −g)", "type": "number"},
+          {"field": "gravity_residual_mps2", "label": "|a+9.81g| 中位数", "type": "number"}
+        ],
+        "layout": "full"
+      },
+      {
+        "id": "table_causes",
+        "title": "修正后的根因优先级",
+        "subtitle": "优先选择能解释方向性、且可用一次安全实验证伪的候选。",
+        "dataset": "root_causes",
+        "sourceId": "src_derived",
+        "defaultSort": {"field": "priority", "direction": "asc"},
+        "density": "spacious",
+        "columns": [
+          {"field": "priority", "label": "优先级", "type": "number"},
+          {"field": "candidate", "label": "候选", "type": "text"},
+          {"field": "evidence", "label": "已有证据", "type": "text"},
+          {"field": "confidence", "label": "当前置信度", "type": "text"},
+          {"field": "minimum_test", "label": "最小验证", "type": "text"}
+        ],
+        "layout": "full"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# 六足机器人后退倾覆：Sim2Real 复核与勘误\n\n两组 2026-07-29 电机日志、当前 MuJoCo flat task 的 logged-target 回放，以及 IsaacGym `el_4090_safe` 的非奖励配置对照。",
+        "layout": "full"
+      },
+      {
+        "id": "summary",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "body": "## 修正后的结论\n\n用户的两项纠正成立：**不能用仓库当前的 `policy_10000.pt` 代表机器人实际 checkpoint；也不能把 HFE 的 actual−target 静差直接称为 PD 跟踪失败。** 105057 的近静态 HFE MAE 在实物为 **0.1104 rad**，把完全相同的 18 维目标送入当前 MuJoCo 模型后为 **0.1065 rad**。这说明承重静差本来就在训练动力学中，不能再作为主要 Sim2Real 缺口。\n\nHFE/KFE 在两组日志中均未超过当前仿真 ±0.6 rad 范围。唯一明确的范围契约差异是 105910 的 HAA：最大目标 **1.0647 rad**，有 **148** 个 HAA 样本超过仿真 ±0.8 rad；但日志没有速度命令和 pitch，无法把它与后退倾覆建立因果。\n\n当前更值得优先验证的是：**姿态/线速度观测坐标契约、约 22 ms 的实物策略周期与非原子 18 维动作更新，以及 Isaac 基线实际包含 ATACOM pitch/roll 安全层。** 域随机化的主要缺口不是摩擦或质量范围，而是没有 push recovery、控制周期/动作延迟和 IMU bias 随机化。",
+        "layout": "full"
+      },
+      {
+        "id": "headline",
+        "type": "metric-strip",
+        "cardIds": ["card_hfe_replay", "card_period", "card_haa_range", "card_atacom"],
+        "layout": "full"
+      },
+      {
+        "id": "correction_intro",
+        "type": "markdown",
+        "body": "## 先把错误方向删除\n\n同行 `error` 的代码语义是：读取当前 actual，计算新 target，先记录 `actual−target`，随后才把该 target 写入电机 buffer。因此它至少有一帧因果错位。对运动段扫描得到 2–4 个策略帧的最佳相关滞后，也不能把接触载荷下的 HFE 幅值关系直接叫作执行器增益。\n\n因克斯 8112 的 90 N·m 峰值说明硬件有较高峰值能力；这两组日志没有相电流、实际 torque 或限流标志，所以既不能由铭牌证明每帧从未饱和，也没有证据把扭矩不足列为主因。结合静态回放，**名义 Kp/Kd、静态承重力矩和 HFE/KFE 角度范围应整体降级。**",
+        "layout": "full"
+      },
+      {"id": "corrections_table", "type": "table", "tableId": "table_corrections", "layout": "full"},
+      {
+        "id": "data_scope",
+        "type": "markdown",
+        "sourceId": "src_logs",
+        "body": "## 日志范围与数据质量\n\n105057 共 42,817 行，各关节长度 2,285–2,429，仅共同前缀 2,285 帧可作为完整 18 关节快照；尾部最多缺 144 帧，若倾覆发生在末尾则无法做全身同步分析。105910 的 18 个 CSV 均为 4,630 行且 counter 完全对齐。两组均满足 `target_pos=0.25×action` 和 `error=actual_pos−target_pos`。\n\n两组目录都没有 command、IMU/quaternion、projected gravity、base pitch、接触、相电流/实际力矩、驱动 fault、逐帧 monotonic timestamp，也没有部署 checkpoint/config/source hash。因此目前不能从日志中标出“发出负 vx → 后仰 → 足端失去支撑 → 倾覆”的因果链。",
+        "layout": "full"
+      },
+      {"id": "ranges_table", "type": "table", "tableId": "table_ranges", "layout": "full"},
+      {
+        "id": "replay_method",
+        "type": "markdown",
+        "sourceId": "src_derived",
+        "body": "## Logged-target 静态回放\n\n不加载任何 policy checkpoint，只读取 105057 前 1,000 帧已经记录的 18 维目标。当前注册 flat task 从 home pose 开始，在首帧目标下稳定 5 s，再按 20 ms 控制周期、每周期 5 个 4 ms MuJoCo 子步回放。该段六个 HFE target 标准差仅 0.00063–0.00147 rad，适合比较重力承载平衡。仿真 base z 保持 0.4680–0.4718 m。\n\n六个 HFE 的实物与仿真 residual 符号和量级一致，汇总 MAE 只差 0.00385 rad。这个结果只验证静态 PD/载荷平衡，不是后退闭环复现；但已足以否定“这批日志里的 HFE 静差是训练从未见过的执行器故障”。",
+        "layout": "full"
+      },
+      {"id": "hfe_chart", "type": "chart", "chartId": "chart_static_hfe", "layout": "full"},
+      {
+        "id": "timing",
+        "type": "markdown",
+        "sourceId": "src_deploy",
+        "body": "## 已验证的部署时间契约差异\n\n训练策略周期是 20 ms。105057 的 18 个 CSV 具有不同终止 counter 和独立关闭时刻；用最终 counter 对文件 mtime 回归得到 **22.001 ms/step，R²=0.999991，即约 45.45 Hz**。当前简单部署脚本在整轮传感、推理、CSV 写入和 18 关节赋值后又无条件 `sleep(20 ms)`，所以真实周期必然大于 20 ms。次日提交也明确记录旧实现产生约 22 ms 周期。\n\n此外 EtherCAT 线程以 250 Hz 读取共享命令，策略线程却逐个改写 18 个 list 元素，未做整帧锁或 generation swap；因此存在发送“前半新动作、后半旧动作”的 torn vector 风险。它不是后退专属，但后退启动时 pitch 恢复更依赖相位一致性。",
+        "layout": "full"
+      },
+      {
+        "id": "isaac_difference",
+        "type": "markdown",
+        "sourceId": "src_isaac",
+        "body": "## IsaacGym 成功基线不是裸策略\n\n`el_4090_safe` 的 actor 输入为 143 维：66 维基础观测后追加 77 维 ATACOM `u_mu`。环境 `step()` 把 actor action 先送入 ATACOM，再执行 `u_safe`；warmup 为 0，pitch/roll 限值均为 0.14 rad（约 8°）。这会直接压制后退启动时的后仰。若师兄的实物部署保留了同一安全层，那么它能后退并不能证明裸 PPO 本身具有同样裕度。\n\nIsaac 还每 3 s 注入最大 1 m/s 的 base xy push，并使用远强于 MuJoCo 的 linvel/gyro/gravity 噪声。相反，MuJoCo 对摩擦、全身质量和 trunk COM 的随机范围并不窄；因此单纯继续扩大摩擦/质量 DR 不是当前最有信息量的动作。",
+        "layout": "full"
+      },
+      {"id": "parameters_table", "type": "table", "tableId": "table_parameters", "layout": "full"},
+      {
+        "id": "observation_contract",
+        "type": "markdown",
+        "sourceId": "src_imu",
+        "body": "## 最像方向性故障的观测风险\n\nMuJoCo actor 看到 body-frame linvel、gyro 和 `R_WBᵀ[0,0,−1]` projected gravity。部署 DETA40 代码对同一 `_quat_urdf` 使用两套互斥旋转：策略 gravity 为 `[-2(xz+wy),−2(yz−wx),…]`，fallback 线速度去重力为 `[-2(xz−wy),−2(yz+wx),…]`。若四元数是 body→world，后者与 MuJoCo 一致而策略 roll/pitch 翻号；若是 world→body，则策略正确而 fallback 错。两者不可能同时正确。纯 yaw 时两套公式相同，正好不会被“原地旋转正常”排除。\n\n同日稍后的旁证进一步提高了检查价值：12:03–12:10 的 1,562 个静止样本满足 `a/|a|≈−g`；12:19–12:35 的 3,822 个静止样本中，加速度 x 仍约 +4.12 m/s²，但 gravity_x 从约 −0.414 等幅翻成 +0.414，静止去重力残差从 0.387 增到 8.177 m/s²。这个 8.18 m/s² 与约 24.5° pitch 项翻号的理论差 8.13 m/s² 高度吻合。它们不是两份 10:xx 精确日志，不能直接定责，却证明该观测链存在版本/约定漂移的真实旁证。\n\n此外，INSGPS 超过 0.5 s 不新鲜时，代码静默切到带 0.95/0.7 衰减的加速度积分；匀速时估计会衰减到 0，旋转 body frame 中又缺少 `ω×v`，与仿真真实局部速度语义不等价。第一项现场实验应是受支撑的 level / nose-up / nose-down 静态倾斜与 velocity-source 检查，而不是再调 Kp。",
+        "layout": "full"
+      },
+      {"id": "imu_side_evidence_table", "type": "table", "tableId": "table_imu_side_evidence", "layout": "full"},
+      {
+        "id": "cause_intro",
+        "type": "markdown",
+        "body": "## 根因排序\n\n这里把“能解释 Isaac 为什么更稳”与“MuJoCo 实机为什么只在后退失稳”同时考虑。结构差异的存在不等于因果已证明；每项都配一个尽量只改一个变量的验证。",
+        "layout": "full"
+      },
+      {"id": "causes_table", "type": "table", "tableId": "table_causes", "layout": "full"},
+      {
+        "id": "minimum_experiment",
+        "type": "markdown",
+        "body": "## 最小现场实验顺序\n\n1. **先不落地行走，验证 obs 坐标。** 在可靠支撑下依次保持水平、机头上抬 10°、机头下压 10°、左侧抬高 10°、右侧抬高 10°。FLU 机体系下，MuJoCo projected gravity 依次应约为 `[0,0,−1]`、`[−0.17365,0,−0.98481]`、`[+0.17365,0,−0.98481]`、`[0,−0.17365,−0.98481]`、`[0,+0.17365,−0.98481]`。同步记录 raw quaternion、`g_obs`、`g_comp`、最终 `obs[0:9]`、加速度、INSGPS age/source；静止还应满足 `a/|a|≈−g`。\n2. **悬空核对后腿关节正方向。** 分别给 `RB_KFE`、`LB_KFE` 小幅 `+0.05–0.1 rad`，测足端移动方向并与同姿态 MuJoCo Jacobian 对照。\n3. **记录真实时间链。** 每策略帧记录 `observation_timestamp_ns`、推理结束、完整 target 发布、EtherCAT 消费的 generation id。目标是 20.0 ms 周期且一次 EtherCAT 帧只消费同一 generation 的 18 个关节。\n4. **做低速、带保护的单变量 A/B。** A 为当前实现；B 只改成绝对 deadline 的 50 Hz 调度和整帧原子交换。命令从 0 阶跃到小幅负 vx，记录 pitch、gravity、cmd、linvel source、raw action、最终 target、q/dq、相电流/实际 torque/fault。再用外部里程计比较 INSGPS 正常、超时切换和 fallback 下的 x 速度。\n5. **再做动作范围 A/B。** 按该 checkpoint 实际训练 XML 的 ctrlrange 在实物端裁剪 HAA/HFE/KFE；当前源码对应 ±0.8/±0.6/±0.6。若两组后退无差异，删除该候选。\n6. **把 Isaac 安全层拆开比较。** 在仿真中用同一后退命令与扰动分别开启/关闭 ATACOM；若关闭后才出现后仰，Isaac 的优势主要来自 safety filter，而不是普通参数。\n7. 上述契约通过后，才增加针对性 DR：policy period、0–2 帧 action/observation delay、IMU constant bias、外参小角度和 push recovery；不要先继续扩大已很宽的质量/摩擦范围。",
+        "layout": "full"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## 结论边界与下一份必要材料\n\n当前复核没有加载仓库 `policy_10000.pt`，也没有把它与训练 checkpoint 做任何等同性推断。静态回放使用当前工作区注册的 flat model；如果机器人实际 checkpoint 来自不同 XML/提交，必须用当时文件再跑一次。\n\n要把候选缩到一个根因，下一步需要从机器人电脑复制实际 `.pt`、部署脚本、YAML，以及训练 run 的 config/XML；至少提供四者的 SHA-256。新的失败日志应把 command、完整 obs、quaternion/projected gravity、raw/clipped action、target、q/dq、current/torque/fault 和 monotonic timestamp 写在同一个原子帧中。绳索三维观测继续置零即可，本报告不把它列为候选。",
+        "layout": "full"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "id": "src_derived",
+      "label": "本次可重跑派生指标",
+      "path": "analysis/backward_gap_reaudit_20260816/report_source.sqlite",
+      "query": {
+        "engine": "SQLite",
+        "language": "sql",
+        "sql": "SELECT dataset, row_order, row_json FROM report_rows ORDER BY dataset, row_order",
+        "description": "读取本报告已复核的有界快照行；原始计算由 analyze_reaudit.py 与 derived_metrics.json 提供。",
+        "tables_used": ["report_rows"],
+        "filters": ["仅包含 artifact.json snapshot.datasets 中的已复核汇总行"],
+        "metric_definitions": [
+          "residual = actual_pos - target_pos",
+          "越过仿真控制范围：HAA |target|>0.8；HFE/KFE |target|>0.6",
+          "静态回放 MAE：105057 前 1000 帧、六个同类关节和全部帧上的 |actual-target| 均值",
+          "周期推断：18 个独立 CSV 的关闭 mtime 对最终 counter 做线性回归",
+          "IMU 静止旁证：imu_valid=1、|command|<0.02、|gyro|<0.05 rad/s、18 关节 dq RMS<0.15 rad/s"
+        ]
+      }
+    },
+    {"id": "src_logs", "label": "2026-07-29 两组逐电机关节日志", "path": "deploy/deploy_real/0729-data"},
+    {"id": "src_deploy", "label": "MuJoCo 策略实机部署与 EtherCAT 线程", "path": "deploy/deploy_real/deploy_real_hexapod_tethered.py"},
+    {"id": "src_imu", "label": "DETA40 IMU 观测实现", "path": "deploy/deploy_real/imu_sdk_deta40/imu_sdk.py"},
+    {"id": "src_mujoco", "label": "MuJoCo joystick、randomizer 与 flat XML", "path": "mujoco_hexapod/mujoco_playground/_src/locomotion/hexapod_tethered_04"},
+    {"id": "src_isaac", "label": "IsaacGym el_4090 safe 配置与环境", "path": "extended_legged_gym-feat-el_4090/legged_gym/legged_gym/envs/el_4090/safe"}
+  ],
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "generatedAt": "2026-08-16T17:54:48+08:00",
+    "datasets": {
+      "headline_metrics": [
+        {
+          "hfe_real_mae_rad": 0.110362049,
+          "hfe_sim_mae_rad": 0.1065079602,
+          "inferred_period_ms": 22.00100152,
+          "inferred_frequency_hz": 45.45247629,
+          "haa_105910_max_abs_target_rad": 1.064668,
+          "haa_105910_over_sim_count": 148,
+          "isaac_atacom_tilt_limit_rad": 0.14,
+          "isaac_actor_obs_dim": 143
+        }
+      ],
+      "static_hfe_chart": [
+        {"joint": "RF_HFE", "system": "实物", "bias_rad": 0.112866698},
+        {"joint": "RF_HFE", "system": "MuJoCo", "bias_rad": 0.130360394},
+        {"joint": "RM_HFE", "system": "实物", "bias_rad": 0.061952867},
+        {"joint": "RM_HFE", "system": "MuJoCo", "bias_rad": 0.0594994561},
+        {"joint": "RB_HFE", "system": "实物", "bias_rad": 0.167652886},
+        {"joint": "RB_HFE", "system": "MuJoCo", "bias_rad": 0.1410072586},
+        {"joint": "LF_HFE", "system": "实物", "bias_rad": -0.133479896},
+        {"joint": "LF_HFE", "system": "MuJoCo", "bias_rad": -0.0970046047},
+        {"joint": "LM_HFE", "system": "实物", "bias_rad": -0.115585192},
+        {"joint": "LM_HFE", "system": "MuJoCo", "bias_rad": -0.1393740272},
+        {"joint": "LB_HFE", "system": "实物", "bias_rad": -0.070634755},
+        {"joint": "LB_HFE", "system": "MuJoCo", "bias_rad": -0.0718020209}
+      ],
+      "corrections": [
+        {
+          "claim": "HFE 静差说明实物 PD 跟不上训练",
+          "status": "撤回",
+          "evidence": "近静态 HFE MAE：实物 0.1104 rad，当前 MuJoCo 回放 0.1065 rad",
+          "meaning": "该 residual 主要是位置 PD 在负载下产生承重力矩，已被训练动力学建模"
+        },
+        {
+          "claim": "HFE/KFE 目标越过 ±0.6 rad 导致失败",
+          "status": "撤回",
+          "evidence": "两组日志 HFE/KFE 越过当前仿真限值的样本数均为 0",
+          "meaning": "HFE/KFE 角度范围不是现有证据下的根因"
+        },
+        {
+          "claim": "所有关节目标都不超过 0.6 rad",
+          "status": "需要按关节类型修正",
+          "evidence": "105910 HAA 最大 1.0647 rad，其中 148 个样本超过当前仿真 ±0.8",
+          "meaning": "只存在 HAA 仿真/实物范围契约差异，且尚不能关联到后退"
+        },
+        {
+          "claim": "仓库当前 policy_10000.pt 可代表机器人策略",
+          "status": "排除",
+          "evidence": "用户确认机器人部署的不是该文件；CSV 未保存模型 hash",
+          "meaning": "本次不做 checkpoint 级策略结论，需机器人端实际文件或 SHA-256"
+        },
+        {
+          "claim": "90 N·m 峰值足以单独排除任何力矩饱和",
+          "status": "证据不足，但优先级低",
+          "evidence": "日志无 current/actual torque/limit flag；但静态 HFE 行为已在 ±40 N·m MuJoCo 模型中复现",
+          "meaning": "不把名义扭矩不足列为主因；动态饱和只需在新日志中顺手记录"
+        }
+      ],
+      "joint_ranges": [
+        {"run_joint": "105057 / HAA", "samples": 14131, "max_abs_target_rad": 0.78384, "sim_limit_rad": 0.8, "over_limit_count": 0, "interpretation": "未越当前仿真范围"},
+        {"run_joint": "105057 / HFE", "samples": 14359, "max_abs_target_rad": 0.49159, "sim_limit_rad": 0.6, "over_limit_count": 0, "interpretation": "未越当前仿真范围"},
+        {"run_joint": "105057 / KFE", "samples": 14327, "max_abs_target_rad": 0.461678, "sim_limit_rad": 0.6, "over_limit_count": 0, "interpretation": "未越当前仿真范围"},
+        {"run_joint": "105910 / HAA", "samples": 27780, "max_abs_target_rad": 1.064668, "sim_limit_rad": 0.8, "over_limit_count": 148, "interpretation": "实物收到仿真会裁剪的目标；方向未知"},
+        {"run_joint": "105910 / HFE", "samples": 27780, "max_abs_target_rad": 0.599329, "sim_limit_rad": 0.6, "over_limit_count": 0, "interpretation": "临近但未越范围"},
+        {"run_joint": "105910 / KFE", "samples": 27780, "max_abs_target_rad": 0.581915, "sim_limit_rad": 0.6, "over_limit_count": 0, "interpretation": "未越当前仿真范围"}
+      ],
+      "imu_side_evidence": [
+        {"period": "12:03–12:10（三个文件）", "static_samples": 1562, "gravity_x_median": -0.4143, "accel_x_median_mps2": 4.0881, "alignment_cosine": 0.9993, "gravity_residual_mps2": 0.38696},
+        {"period": "12:19–12:35（五个文件）", "static_samples": 3822, "gravity_x_median": 0.41434, "accel_x_median_mps2": 4.1176, "alignment_cosine": 0.65325, "gravity_residual_mps2": 8.1768}
+      ],
+      "parameter_comparison": [
+        {"item": "策略周期", "mujoco": "训练 0.004×5=0.020 s；105057 实物推断 22.001 ms", "isaac": "0.005×4=0.020 s", "diagnostic_meaning": "训练相同；MuJoCo 实物约慢 10%"},
+        {"item": "Kp / Kd", "mujoco": "100 / 1.2；用户确认机器人端相同", "isaac": "120 / 1.2", "diagnostic_meaning": "Isaac 更硬，但不能解释 MuJoCo 的静态 residual，因为后者已被仿真复现"},
+        {"item": "action scale", "mujoco": "0.25", "isaac": "0.25", "diagnostic_meaning": "一致"},
+        {"item": "actor 观测", "mujoco": "70 维；linvel/gyro/gravity/q/dq/last action/cmd/3 个绳索量", "isaac": "143 维；66 基础量 + 77 维 ATACOM u_mu", "diagnostic_meaning": "不是可直接互换的策略接口"},
+        {"item": "安全动作层", "mujoco": "无", "isaac": "ATACOM 必经；pitch/roll ±0.14 rad", "diagnostic_meaning": "最强结构差异，直接限制后仰"},
+        {"item": "前后 command", "mujoco": "x∈[-0.8,0.8] 对称；稳态精确纯后退约 16.875%", "isaac": "x∈[-1.5,1.5] 对称；y/yaw 连续独立采样", "diagnostic_meaning": "不支持 MuJoCo 后退训练样本不足"},
+        {"item": "外部 push", "mujoco": "pert_config.enable=False", "isaac": "每 3 s，base xy 最大 1 m/s", "diagnostic_meaning": "MuJoCo 缺少姿态恢复训练"},
+        {"item": "linvel 噪声（物理量）", "mujoco": "±0.1 m/s", "isaac": "±1.2 m/s", "diagnostic_meaning": "MuJoCo 对真实速度估计误差的鲁棒性弱很多"},
+        {"item": "gyro / gravity 噪声", "mujoco": "±0.2 rad/s；±0.05", "isaac": "±1.2 rad/s；±0.75", "diagnostic_meaning": "真实姿态观测 bias/噪声更可能使 MuJoCo 出分布"},
+        {"item": "q / dq 噪声", "mujoco": "±0.03 rad；±1.5 rad/s", "isaac": "±0.075 rad；±2.25 rad/s", "diagnostic_meaning": "Isaac 更强"},
+        {"item": "摩擦随机化", "mujoco": "floor μ∈[0.5,1.5]", "isaac": "μ∈[0.3,1.25]", "diagnostic_meaning": "MuJoCo 不更窄，不宜先扩大"},
+        {"item": "关节 frictionloss DR", "mujoco": "把 nominal frictionloss×[0.9,1.1]，但 18 腿 nominal 全为 0", "isaac": "未随机化", "diagnostic_meaning": "MuJoCo 该项名存实亡；可能影响动态摩擦鲁棒性，但不天然区分前后"},
+        {"item": "质量 / COM 随机化", "mujoco": "全 link ×[0.9,1.2]；trunk ±1 kg；trunk COM xyz 各 ±0.1 m", "isaac": "base mass ±5 kg；无 COM DR", "diagnostic_meaning": "MuJoCo 已很激进；应校准 nominal fore-aft 模型而非盲目加宽"},
+        {"item": "nominal 整机质量 / COM-x / pitch inertia", "mujoco": "38.198 kg；+4.423 mm；4.6198 kg·m²", "isaac": "39.551 kg；−4.019 mm；4.6645 kg·m²", "diagnostic_meaning": "质量差 3.4%、俯仰惯量差 0.96%；未发现数量级前后模型错误"},
+        {"item": "已确认惯性参数笔误", "mujoco": "RM_HIP inertial y 为 −0.0042，历史 XML/STL 支持 −0.042", "isaac": "不适用", "diagnostic_meaning": "应修正，但对全身 COM-x 仅约 1.40 mm，不足以单独解释倾覆"},
+        {"item": "足端碰撞", "mujoco": "六脚统一半径 0.023 m 球 + 腿部 capsule", "isaac": "实际 FOOT/HIP/THIGH/SHANK mesh", "diagnostic_meaning": "MuJoCo 丢失足底压力中心前后迁移，是中等方向性模型候选"},
+        {"item": "后腿 KFE 正方向", "mujoco": "RB_KFE=+Z、LB_KFE=−Z，采用特殊轴组合", "isaac": "局部 joint axis 均写 +Z", "diagnostic_meaning": "不必然错误；需悬空 +0.05–0.1 rad 与 MuJoCo Jacobian 对照"},
+        {"item": "action/obs delay 与控制周期 DR", "mujoco": "无；Kp/Kd DR 关闭", "isaac": "无；motor strength DR 无", "diagnostic_meaning": "两边都缺，但 MuJoCo 实物已测到周期偏差"},
+        {"item": "仿真 actuator force cap", "mujoco": "±40 N·m", "isaac": "URDF ±80 N·m；ATACOM τ限 ±76", "diagnostic_meaning": "实物 8112 峰值 90 N·m 更高，不支持名义力矩不足；新日志只需确认动态时未触发实际限流"},
+        {"item": "关节范围", "mujoco": "HAA ±0.8；HFE/KFE ±0.6", "isaac": "URDF ±3；ATACOM q限 ±2.95", "diagnostic_meaning": "差异大，但现有 HFE/KFE 日志未越 MuJoCo 范围"},
+        {"item": "对称增强", "mujoco": "未见显式 front-back augmentation", "isaac": "启用的函数只有 left-right x-sym", "diagnostic_meaning": "Isaac 成功不能归功于已启用的前后镜像增强"},
+        {"item": "reset qpos 随机化", "mujoco": "randomizer 改 qpos0±0.05，但 reset 使用 keyframe _init_q", "isaac": "默认角为 0，乘缩放后仍为 0", "diagnostic_meaning": "两边实质均未随机初始腿角；MuJoCo 这项配置目前不生效"},
+        {"item": "MuJoCo DR 重采样频率", "mujoco": "RSL wrapper 构造时每并行环境采样一次，不随 episode reset 重采样", "isaac": "friction bucket / episode reset 逻辑", "diagnostic_meaning": "并行环境足够多时仍有覆盖，但单环境跨 episode 不刷新参数"}
+      ],
+      "root_causes": [
+        {
+          "priority": 1,
+          "candidate": "IMU projected-gravity / linvel 坐标与时延契约",
+          "evidence": "同一四元数使用两套互斥 pitch/roll 公式；12:xx 静止旁证出现 gravity_x 等幅翻号和 8.18 m/s² 去重力残差",
+          "confidence": "代码冲突高；对 10:xx 倾覆的因果中等",
+          "minimum_test": "支撑下做 level、nose-up/down、left/right-up，逐轴对齐 MuJoCo；记录 INSGPS age/source 并检查 fallback 静止漂移"
+        },
+        {
+          "priority": 2,
+          "candidate": "实物 45.45 Hz 策略周期与 250 Hz 命令 torn vector",
+          "evidence": "105057 mtime-counter 回归 22.001 ms、R² 0.999991；共享 18 维 list 无整帧原子交换",
+          "confidence": "时间/并发缺陷高；只影响后退的解释中等",
+          "minimum_test": "绝对 deadline 50 Hz + generation-id 原子命令帧，与当前实现做小幅负 vx A/B"
+        },
+        {
+          "priority": 3,
+          "candidate": "RB_KFE / LB_KFE 实物正方向与 XML 特殊轴号不一致",
+          "evidence": "XML 的 RB_KFE=+Z、LB_KFE=−Z，组合不同于普通左右镜像；现有日志只给 URDF 坐标，不能验证足端物理方向",
+          "confidence": "是否错误未知；一旦不一致则严重，且验证成本很低",
+          "minimum_test": "机器人悬空逐关节 +0.05–0.1 rad，测足端位移方向并与 MuJoCo Jacobian 对照"
+        },
+        {
+          "priority": 4,
+          "candidate": "Isaac 成功主要由 ATACOM pitch shield 提供",
+          "evidence": "safe config warmup=0，actor 包含 u_mu，action 必经 u_safe，pitch/roll 限制约 8°",
+          "confidence": "训练结构高；Isaac 实物是否同样执行需确认",
+          "minimum_test": "同一 Isaac checkpoint 在仿真中开启/关闭 ATACOM，比较后退启动 pitch 峰值和跌倒率"
+        },
+        {
+          "priority": 5,
+          "candidate": "恢复鲁棒性覆盖不足，而非摩擦/质量 DR 太窄",
+          "evidence": "MuJoCo 无 push、姿态噪声较弱，也无 delay/bias DR；joint friction 与 reset qpos 两项 DR 实际不生效；Isaac 每 3 s 强 push",
+          "confidence": "中等",
+          "minimum_test": "先修正部署契约，再只增加 push、IMU bias、18–24 ms 周期和 0–2 帧 delay 做消融"
+        },
+        {
+          "priority": 6,
+          "candidate": "球形足端未建模真实足底压力中心迁移",
+          "evidence": "MuJoCo 六脚为统一 23 mm 球，Isaac 使用 FOOT mesh；但两模型俯仰惯量仅差 0.96%，未发现后腿位置大错",
+          "confidence": "中低；方向性合理，尚无接触力/压力中心数据",
+          "minimum_test": "扫描等效足底几何/接触参数并记录后退 pitch；实物测足底接触斑或六轴力，不先改质量 DR"
+        },
+        {
+          "priority": 7,
+          "candidate": "HAA 实物目标未按仿真 ctrlrange 裁剪",
+          "evidence": "105910 有 148 个 HAA 样本超过 ±0.8，最大 1.0647 rad；HFE/KFE 无越限",
+          "confidence": "契约差异高；后退因果低",
+          "minimum_test": "按实际训练 XML 范围裁剪后 A/B；新日志同时记录 cmd 和 pitch"
+        },
+        {
+          "priority": 8,
+          "candidate": "名义 Kp=100/Kd=1.2、HFE/KFE 范围或静态力矩不足",
+          "evidence": "用户确认实物增益；近静态 HFE residual 在当前 MuJoCo 中几乎同量级复现；HFE/KFE 不越限",
+          "confidence": "低",
+          "minimum_test": "不再先调增益；只在完整后退日志中检查动态 current/torque/fault 是否饱和"
+        }
+      ]
+    }
+  }
+}

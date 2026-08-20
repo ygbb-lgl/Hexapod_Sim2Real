@@ -108,6 +108,8 @@ class Controller:
         )
 
         # imu init
+        # get_linear_velocity() returns only gravity-compensated IMU integration.
+        # INSGPS/GPS velocity is retained only for diagnostics.
         self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
@@ -159,14 +161,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group2:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group3:
-                kp[policy_idx] = 80.0
-                kd[policy_idx] = 1.3
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -197,6 +199,7 @@ class Controller:
     # 移动到默认位置
     def move_to_default_pos(self):
         print('Moving to default pos.')
+        create_zero_velocity_cmd(self.robot)
         total_time = 2
         num_step = int(total_time / self.config.control_dt)
         default_pos = self.config.default_angles
@@ -220,6 +223,7 @@ class Controller:
                 self.robot.motor_command_buffer.target_position[j] = q
                 self.robot.motor_command_buffer.target_velocity[j] = 0.0
                 self.robot.motor_command_buffer.feedforward_torque[j] = 0.0
+            create_zero_velocity_cmd(self.robot)
 
             time.sleep(self.config.control_dt)
 
@@ -239,6 +243,8 @@ class Controller:
                 self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
                 # init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
                 # print(init_dof_pos[i])
+            create_zero_velocity_cmd(self.robot)
+
             time.sleep(self.config.control_dt)
 
     # 打印关节初始位置
@@ -251,14 +257,15 @@ class Controller:
 
     # 打印imu数据
     def print_imu_data(self):
-        vel = self.imu.get_linear_velocity()
-        grav = self.imu.get_gravity_acceleration()
-        if vel is not None and grav is not None:
-            for i in range(10):
-                print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
-                time.sleep(0.1)
-        else:
-            print("No IMU data available.")
+        for _ in range(10):
+            vel = self.imu.get_linear_velocity()
+            grav = self.imu.get_gravity_acceleration()
+            print(
+                f"Vel: [{vel[0]:+7.3f}, {vel[1]:+7.3f}, {vel[2]:+7.3f}] | "
+                f"Grav: [{grav[0]:+7.3f}, {grav[1]:+7.3f}, {grav[2]:+7.3f}]",
+                flush=True,
+            )
+            time.sleep(0.1)
 
     def print_pitch_angle(self):
         pitch_value = self.pitch_sensor.get_angle()
@@ -342,15 +349,18 @@ class Controller:
         # Avoid printing at control rate (50Hz) since it can disturb timing.
         self.obs[64:67] = self.cmd * self.config.command_scale
         
-        self.obs[67] = np.float32(tension_value)
-        self.obs[68] = np.float32(yaw_differ_value)
-        self.obs[69] = np.float32(pitch_value)
+        self.obs[67] = np.float32(0.001)
+        #self.obs[67] = np.float32(tension_value)
+        self.obs[68] = np.float32(0)
+        #self.obs[68] = np.float32(yaw_differ_value)
+        self.obs[69] = np.float32(0.01)
+        #self.obs[69] = np.float32(pitch_value)
 
         obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
         self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
         # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
-        self.action[0:18] = np.clip(self.action[0:18], -2.0, 2.0)
+        self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
         self.action[18] = np.clip(self.action[18], 0.0, 2.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
@@ -405,14 +415,17 @@ class Controller:
         # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_speed_rpm = self.tension_speed_controller.step(
-            speed_input=float(linvel[0]),
+        spool_speed_rpm,feedback_rpm, rff_rpm = self.tension_speed_controller.step(
+            cmd_speed_input=float(cmd[0]*0.8),
+            imu_speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
         )
-        self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
-
+        self.robot.spool_command_buffer.target_speed_rpm[0] = float(0.0)
+        #self.robot.spool_command_buffer.target_speed_rpm[0] = float(spool_speed_rpm)
+        self.robot.spool_state_buffer.velocity[0] = float(self.robot.spool_state_buffer.velocity[0])  # Ensure velocity is updated for next control step
+        spool_rpm = self.robot.spool_state_buffer.velocity[0] * 60.0 / (2.0 * np.pi)  # Convert rad/s to RPM for logging/plotting
         time.sleep(self.config.control_dt)
 
 
@@ -445,9 +458,12 @@ if __name__ == "__main__":
                 break
 
             if controller.gamepad.get_button_y() == 1:
+                # Safety: stop spool speed motor immediately on Y.
+                create_zero_velocity_cmd(controller.robot)
                 controller.move_to_default_pos()
                 # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
                 controller.default_pos_state()
+                create_zero_velocity_cmd(controller.robot)
             
         except KeyboardInterrupt:
             break

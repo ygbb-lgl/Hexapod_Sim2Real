@@ -23,14 +23,14 @@ def main():
         print("Failed to start IMU.")
         return
 
-    print("IMU started. Format: Vel [m/s] | Grav [unit]")
+    print("IMU started. Selected source: IMU integration only")
     try:
         while True:
             vel = imu.get_linear_velocity()
             grav = imu.get_gravity_acceleration()
             print(
-                f"Vel: [{vel[0]:7.3f}, {vel[1]:7.3f}, {vel[2]:7.3f}] | "
-                f"Grav: [{grav[0]:7.3f}, {grav[1]:7.3f}, {grav[2]:7.3f}]"
+                f"Vel: [{vel[0]:+7.3f}, {vel[1]:+7.3f}, {vel[2]:+7.3f}] "
+                f"| Grav: [{grav[0]:+7.3f}, {grav[1]:+7.3f}, {grav[2]:+7.3f}]"
             )
             time.sleep(0.1)
     except KeyboardInterrupt:

@@ -108,15 +108,15 @@ class ModelConfig:
 @dataclass
 class TrainConfig:
     seed: int = 7
-    epochs: int = 60
-    batch_size: int = 256
+    epochs: int = 200
+    batch_size: int = 4096
     learning_rate: float = 3e-4
     weight_decay: float = 1e-5
     grad_clip_norm: float = 1.0
     num_workers: int = 0
     val_fraction: float = 0.15
     test_fraction: float = 0.15
-    patience: int = 12
+    patience: int = 100
     huber_delta: float = 1.0
     lambda_force: float = 1.0
     lambda_trend: float = 0.2

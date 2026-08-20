@@ -177,7 +177,7 @@ class IMUSDK:
         self._filtered_vel_from_insgps = None
         self._last_insgps_t = 0.0
 
-        # Fallback velocity estimation (integration)
+        # IMU-only velocity estimation (gravity-compensated acceleration integration)
         self._estimated_velocity = [0.0, 0.0, 0.0]
         self._filtered_estimated_velocity = None
         self._last_acc = [0.0, 0.0, 0.0]
@@ -231,20 +231,45 @@ class IMUSDK:
             return dict(self._raw_ahrs)
 
     def get_linear_velocity(self):
-        """Base linear velocity [vx, vy, vz] in URDF/body frame (m/s)."""
+        """IMU-integrated base velocity [vx, vy, vz] in body frame (m/s)."""
         with self.lock:
-            # Prefer sensor-provided body velocity if it's fresh.
-            if self.valid_insgps and (time.monotonic() - self._last_insgps_t) < 0.5:
-                return [
-                    float(self._vel_from_insgps[0]),
-                    float(self._vel_from_insgps[1]),
-                    float(self._vel_from_insgps[2]),
-                ]
-            return [
-                float(self._estimated_velocity[0]),
-                float(self._estimated_velocity[1]),
-                float(self._estimated_velocity[2]),
+            # INSGPS is decoded only for diagnostics and never reaches the policy.
+            return [float(v) for v in self._estimated_velocity]
+
+    def get_velocity_diagnostics(self) -> Dict[str, object]:
+        """Return a read-only snapshot of velocity selection and compensation.
+
+        INSGPS is reported only as a comparison signal. ``selected_velocity`` is
+        always the IMU-integrated velocity returned by :meth:`get_linear_velocity`.
+        """
+        with self.lock:
+            now = time.monotonic()
+            insgps_age_s = (
+                max(0.0, now - self._last_insgps_t)
+                if self.valid_insgps
+                else float("inf")
+            )
+            insgps_fresh = self.valid_insgps and insgps_age_s < 0.5
+            compensated_acceleration = [
+                float(self._acc_urdf[i] + 9.81 * self._gravity_vec[i])
+                for i in range(3)
             ]
+            return {
+                "source": "imu_integration",
+                "imu_valid": bool(self.valid_imu),
+                "ahrs_valid": bool(self.valid_ahrs),
+                "insgps_valid": bool(self.valid_insgps),
+                "insgps_fresh": bool(insgps_fresh),
+                "insgps_age_s": float(insgps_age_s),
+                "insgps_velocity": [float(v) for v in self._vel_from_insgps],
+                "imu_integrated_velocity": [
+                    float(v) for v in self._estimated_velocity
+                ],
+                # Backward-compatible diagnostic name.
+                "fallback_velocity": [float(v) for v in self._estimated_velocity],
+                "selected_velocity": [float(v) for v in self._estimated_velocity],
+                "compensated_acceleration": compensated_acceleration,
+            }
 
     def get_gravity_acceleration(self):
         """Gravity direction unit vector in body frame (compatible with sim2sim gravity obs)."""
@@ -364,7 +389,8 @@ class IMUSDK:
                 self._last_insgps_t = time.monotonic()
                 self.valid_insgps = True
 
-            # If we have both IMU+AHRS, update URDF-frame state + gravity.
+            # Preserve the original estimator update timing. INSGPS values are
+            # never selected by get_linear_velocity().
             if self.valid_imu and self.valid_ahrs:
                 self._update_urdf_state_locked()
 
@@ -403,7 +429,7 @@ class IMUSDK:
 
         self._gravity_vec = list(self._compute_gravity_vec_for_obs(self._quat_urdf))
 
-        # If no INSGPS velocity, keep a simple integration-based estimate.
+        # Maintain the IMU-only integration estimate returned to the policy.
         self._update_velocity_estimation_locked()
 
     @staticmethod
@@ -419,11 +445,9 @@ class IMUSDK:
 
     @staticmethod
     def _compute_gravity_vec_for_comp(q: Tuple[float, float, float, float]) -> Tuple[float, float, float]:
-        qw, qx, qy, qz = q
-        gx = -2.0 * (qx * qz - qw * qy)
-        gy = -2.0 * (qy * qz + qw * qx)
-        gz = -(1.0 - 2.0 * (qx * qx + qy * qy))
-        return (gx, gy, gz)
+        # Compensation and policy observation must use one shared world-to-body
+        # gravity projection, including the same defensive normalization.
+        return IMUSDK._compute_gravity_vec_for_obs(q)
 
     def _update_velocity_estimation_locked(self) -> None:
         now = time.monotonic()
@@ -433,7 +457,9 @@ class IMUSDK:
         if dt > 0.01 or dt < 0.0001:
             return
 
-        gravity_body_x, gravity_body_y, gravity_body_z = self._compute_gravity_vec_for_comp(self._quat_urdf)
+        gravity_body_x, gravity_body_y, gravity_body_z = (
+            self._compute_gravity_vec_for_comp(self._quat_urdf)
+        )
 
         g = 9.81
         ax_comp = self._acc_urdf[0] + gravity_body_x * g
