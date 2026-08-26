@@ -108,7 +108,8 @@ class Controller:
         )
 
         # imu init
-        # get_linear_velocity() returns only gravity-compensated IMU integration.
+        # get_linear_velocity() returns gravity-compensated world-frame IMU
+        # integration, converted to the current policy/body frame.
         # INSGPS/GPS velocity is retained only for diagnostics.
         self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
         self.imu_started = self.imu.start()
@@ -231,6 +232,7 @@ class Controller:
     def default_pos_state(self):
         print("Enter default pos state.")
         print("Waiting for the Button A signal...")
+        self.imu.begin_stationary_calibration()
 
         #init_dof_pos = np.zeros(18, dtype=np.float32)
         while self.gamepad.get_button_a() != 1:
@@ -246,6 +248,16 @@ class Controller:
             create_zero_velocity_cmd(self.robot)
 
             time.sleep(self.config.control_dt)
+
+        # The robot has been held at the default pose and is known to be
+        # stationary here. Re-zero the pure-IMU integrator immediately before
+        # policy control starts (or resumes).
+        bias_calibrated = self.imu.reset_linear_velocity()
+        if not bias_calibrated:
+            print(
+                "[WARNING] IMU velocity reset, but too few quiet samples "
+                "were available to refresh accelerometer bias."
+            )
 
     # 打印关节初始位置
     def print_initial_joint_positions(self):

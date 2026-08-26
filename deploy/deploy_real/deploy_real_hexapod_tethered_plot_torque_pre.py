@@ -639,6 +639,7 @@ class Controller:
     def default_pos_state(self):
         print("Enter default pos state.")
         print("Waiting for the Button A signal...")
+        self.imu.begin_stationary_calibration()
 
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot enter default_pos_state")
@@ -658,6 +659,14 @@ class Controller:
             # Safety: keep spool speed at 0 while holding default pose.
             create_zero_torque_cmd(self.robot)
             time.sleep(self.config.control_dt)
+
+        # Start/resume policy control from a known stationary zero velocity.
+        bias_calibrated = self.imu.reset_linear_velocity()
+        if not bias_calibrated:
+            print(
+                "[WARNING] IMU velocity reset, but too few quiet samples "
+                "were available to refresh accelerometer bias."
+            )
 
     # 打印关节初始位置
     def print_initial_joint_positions(self):

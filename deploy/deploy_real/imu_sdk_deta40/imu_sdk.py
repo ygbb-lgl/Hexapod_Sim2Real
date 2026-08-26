@@ -1,6 +1,8 @@
+import math
 import struct
 import threading
 import time
+from collections import deque
 from typing import Dict, Optional, Tuple
 
 import serial
@@ -17,9 +19,21 @@ IMU_LEN = 0x38  # 56 bytes
 AHRS_LEN = 0x30  # 48 bytes
 INSGPS_LEN = 0x48  # 72 bytes
 
-# First-order low-pass filter applied to IMU acceleration and velocity outputs.
+# First-order low-pass filter applied to IMU measurements and world-frame
+# gravity-compensated acceleration.
 # filtered = alpha * current + (1 - alpha) * previous_filtered
 IMU_LPF_ALPHA = 0.8
+
+GRAVITY_ACCELERATION = 9.81
+VELOCITY_DT_MIN_S = 0.0001
+VELOCITY_DT_MAX_S = 0.05
+MAX_ESTIMATED_SPEED_MPS = 2.0
+MAX_AHRS_AGE_S = 0.05
+MAX_PENDING_IMU_SAMPLES = 256
+BIAS_CALIBRATION_WINDOW_SAMPLES = 200
+BIAS_CALIBRATION_MIN_SAMPLES = 20
+BIAS_CALIBRATION_MAX_ACCEL_MPS2 = 0.75
+BIAS_CALIBRATION_MAX_GYRO_RAD_S = 0.15
 
 
 # ================= CRC Tables (from official C++ crc_table.cpp) =================
@@ -95,7 +109,7 @@ def calc_crc16(data: bytes) -> int:
 def _normalize_quat(q: Tuple[float, float, float, float]) -> Tuple[float, float, float, float]:
     qw, qx, qy, qz = q
     n2 = qw * qw + qx * qx + qy * qy + qz * qz
-    if n2 <= 1e-12:
+    if not math.isfinite(n2) or n2 <= 1e-12:
         return (1.0, 0.0, 0.0, 0.0)
     inv = (n2 ** -0.5)
     return (qw * inv, qx * inv, qy * inv, qz * inv)
@@ -177,11 +191,35 @@ class IMUSDK:
         self._filtered_vel_from_insgps = None
         self._last_insgps_t = 0.0
 
-        # IMU-only velocity estimation (gravity-compensated acceleration integration)
+        # IMU-only velocity estimation. Acceleration and velocity are kept in
+        # the non-rotating world frame; get_linear_velocity() converts the
+        # result to the latest policy/body frame.
+        self._specific_force_urdf = [0.0, 0.0, 0.0]
+        self._linear_acceleration_world = [0.0, 0.0, 0.0]
+        self._filtered_linear_acceleration_world = None
+        self._estimated_velocity_world = [0.0, 0.0, 0.0]
         self._estimated_velocity = [0.0, 0.0, 0.0]
-        self._filtered_estimated_velocity = None
-        self._last_acc = [0.0, 0.0, 0.0]
-        self._last_vel_update_t = time.monotonic()
+        self._last_acceleration_world = None
+        self._last_velocity_sample_time_s = None
+        self._last_velocity_device_timestamp_us = None
+        self._velocity_time_source = None
+        self._last_velocity_dt_s = 0.0
+        self._last_velocity_update_host_t = 0.0
+        self._velocity_update_count = 0
+        self._velocity_rejected_sample_count = 0
+        self._last_imu_arrival_t = 0.0
+        self._last_ahrs_arrival_t = 0.0
+        self._last_imu_ahrs_delta_s = float("inf")
+        self._ahrs_history = deque(maxlen=2)
+        self._pending_imu_samples = deque()
+
+        # Body-frame accelerometer bias is estimated only when an external
+        # caller confirms the robot is stationary via reset_linear_velocity().
+        self._accelerometer_bias_urdf = [0.0, 0.0, 0.0]
+        self._quiet_bias_candidates = deque(
+            maxlen=BIAS_CALIBRATION_WINDOW_SAMPLES
+        )
+        self._last_bias_calibration_sample_count = 0
 
     # -------------------- Public API --------------------
     def start(self) -> bool:
@@ -234,7 +272,33 @@ class IMUSDK:
         """IMU-integrated base velocity [vx, vy, vz] in body frame (m/s)."""
         with self.lock:
             # INSGPS is decoded only for diagnostics and never reaches the policy.
+            self._estimated_velocity = list(
+                self._rotate_world_to_body(
+                    self._quat_urdf,
+                    self._estimated_velocity_world,
+                )
+            )
             return [float(v) for v in self._estimated_velocity]
+
+    def reset_linear_velocity(self) -> bool:
+        """Reset the IMU-only velocity integrator to zero.
+
+        Call this only when the robot is known to be stationary. An IMU alone
+        cannot distinguish rest from constant-velocity translation.
+
+        Returns True when enough recent quiet IMU samples were available to
+        refresh the body-frame accelerometer bias estimate.
+        """
+        with self.lock:
+            bias_calibrated = self._calibrate_accelerometer_bias_locked()
+            self._reset_velocity_estimation_locked()
+            return bias_calibrated
+
+    def begin_stationary_calibration(self) -> None:
+        """Discard old bias candidates before a known stationary hold."""
+        with self.lock:
+            self._quiet_bias_candidates.clear()
+            self._last_bias_calibration_sample_count = 0
 
     def get_velocity_diagnostics(self) -> Dict[str, object]:
         """Return a read-only snapshot of velocity selection and compensation.
@@ -250,25 +314,83 @@ class IMUSDK:
                 else float("inf")
             )
             insgps_fresh = self.valid_insgps and insgps_age_s < 0.5
-            compensated_acceleration = [
-                float(self._acc_urdf[i] + 9.81 * self._gravity_vec[i])
-                for i in range(3)
-            ]
+            ahrs_age_s = (
+                max(0.0, now - self._last_ahrs_arrival_t)
+                if self.valid_ahrs
+                else float("inf")
+            )
+            ahrs_fresh = self.valid_ahrs and ahrs_age_s <= MAX_AHRS_AGE_S
+            imu_age_s = (
+                max(0.0, now - self._last_imu_arrival_t)
+                if self.valid_imu
+                else float("inf")
+            )
+            imu_fresh = self.valid_imu and imu_age_s <= MAX_AHRS_AGE_S
+            velocity_update_age_s = (
+                max(0.0, now - self._last_velocity_update_host_t)
+                if self._last_velocity_update_host_t > 0.0
+                else float("inf")
+            )
+            integrated_velocity = list(
+                self._rotate_world_to_body(
+                    self._quat_urdf,
+                    self._estimated_velocity_world,
+                )
+            )
+            compensated_acceleration = list(
+                self._rotate_world_to_body(
+                    self._quat_urdf,
+                    self._linear_acceleration_world,
+                )
+            )
             return {
                 "source": "imu_integration",
                 "imu_valid": bool(self.valid_imu),
+                "imu_fresh": bool(imu_fresh),
+                "imu_age_s": float(imu_age_s),
                 "ahrs_valid": bool(self.valid_ahrs),
+                "ahrs_fresh": bool(ahrs_fresh),
+                "ahrs_age_s": float(ahrs_age_s),
+                "imu_ahrs_timestamp_delta_s": float(
+                    self._last_imu_ahrs_delta_s
+                ),
                 "insgps_valid": bool(self.valid_insgps),
                 "insgps_fresh": bool(insgps_fresh),
                 "insgps_age_s": float(insgps_age_s),
                 "insgps_velocity": [float(v) for v in self._vel_from_insgps],
                 "imu_integrated_velocity": [
-                    float(v) for v in self._estimated_velocity
+                    float(v) for v in integrated_velocity
+                ],
+                "imu_integrated_velocity_world": [
+                    float(v) for v in self._estimated_velocity_world
                 ],
                 # Backward-compatible diagnostic name.
-                "fallback_velocity": [float(v) for v in self._estimated_velocity],
-                "selected_velocity": [float(v) for v in self._estimated_velocity],
+                "fallback_velocity": [float(v) for v in integrated_velocity],
+                "selected_velocity": [float(v) for v in integrated_velocity],
                 "compensated_acceleration": compensated_acceleration,
+                "compensated_acceleration_world": [
+                    float(v) for v in self._linear_acceleration_world
+                ],
+                "velocity_time_source": self._velocity_time_source,
+                "velocity_update_age_s": float(velocity_update_age_s),
+                "velocity_estimator_valid": bool(
+                    imu_fresh
+                    and ahrs_fresh
+                    and self._velocity_time_source is not None
+                    and velocity_update_age_s <= MAX_AHRS_AGE_S
+                ),
+                "velocity_dt_s": float(self._last_velocity_dt_s),
+                "velocity_update_count": int(self._velocity_update_count),
+                "velocity_rejected_sample_count": int(
+                    self._velocity_rejected_sample_count
+                ),
+                "pending_imu_sample_count": len(self._pending_imu_samples),
+                "accelerometer_bias_body": [
+                    float(v) for v in self._accelerometer_bias_urdf
+                ],
+                "bias_calibration_sample_count": int(
+                    self._last_bias_calibration_sample_count
+                ),
             }
 
     def get_gravity_acceleration(self):
@@ -341,8 +463,30 @@ class IMUSDK:
                 self._raw_imu["acc_x"] = float(vals[3])
                 self._raw_imu["acc_y"] = float(vals[4])
                 self._raw_imu["acc_z"] = float(vals[5])
-                self._raw_imu["timestamp"] = float(vals[12])
+                self._raw_imu["timestamp"] = int(vals[12])
+
+                imu_values = vals[:6]
+                if not all(math.isfinite(float(v)) for v in imu_values):
+                    return
+
                 self.valid_imu = True
+                self._last_imu_arrival_t = time.monotonic()
+                self._update_imu_measurement_state_locked()
+                imu_timestamp_us = int(vals[12])
+                if imu_timestamp_us > 0:
+                    self._queue_imu_sample_locked(imu_timestamp_us)
+                    self._drain_aligned_imu_samples_locked()
+                elif self._attitude_is_fresh_for_imu_locked(imu_timestamp_us):
+                    # Old firmware without a usable device timestamp cannot be
+                    # interpolated. Use the latest fresh AHRS and host time.
+                    self._update_velocity_estimation_locked(
+                        imu_timestamp_us,
+                        self._specific_force_urdf,
+                        self._quat_urdf,
+                        self._gyro_urdf,
+                    )
+                else:
+                    self._velocity_rejected_sample_count += 1
 
             elif data_type == TYPE_AHRS:
                 if len(payload) != AHRS_LEN:
@@ -360,8 +504,23 @@ class IMUSDK:
                 self._raw_ahrs["qx"] = float(vals[7])
                 self._raw_ahrs["qy"] = float(vals[8])
                 self._raw_ahrs["qz"] = float(vals[9])
-                self._raw_ahrs["timestamp"] = float(vals[10])
+                self._raw_ahrs["timestamp"] = int(vals[10])
+
+                quaternion = (float(vals[6]), float(vals[7]), float(vals[8]), float(vals[9]))
+                quaternion_norm_squared = sum(v * v for v in quaternion)
+                if (
+                    not all(math.isfinite(v) for v in quaternion)
+                    or quaternion_norm_squared <= 1e-12
+                ):
+                    return
+
                 self.valid_ahrs = True
+                self._last_ahrs_arrival_t = time.monotonic()
+                # AHRS packets refresh orientation and the body-frame view of
+                # velocity, but must never integrate the previous IMU sample.
+                self._update_orientation_state_locked()
+                self._append_ahrs_sample_locked(int(vals[10]))
+                self._drain_aligned_imu_samples_locked()
 
             elif data_type == TYPE_INSGPS:
                 if len(payload) != INSGPS_LEN:
@@ -389,11 +548,6 @@ class IMUSDK:
                 self._last_insgps_t = time.monotonic()
                 self.valid_insgps = True
 
-            # Preserve the original estimator update timing. INSGPS values are
-            # never selected by get_linear_velocity().
-            if self.valid_imu and self.valid_ahrs:
-                self._update_urdf_state_locked()
-
     # -------------------- Internal: math --------------------
     def _lpf_vector(self, values, state_attr: str):
         current = [float(v) for v in values]
@@ -409,14 +563,24 @@ class IMUSDK:
         setattr(self, state_attr, filtered)
         return list(filtered)
 
-    def _update_urdf_state_locked(self) -> None:
-        # Coordinate transform IMU->URDF
+    def _update_orientation_state_locked(self) -> None:
+        """Update quaternion/gravity without reusing an old IMU sample."""
         qw = float(self._raw_ahrs["qw"])
         qx = float(self._raw_ahrs["qx"])
         qy = -float(self._raw_ahrs["qy"])
         qz = -float(self._raw_ahrs["qz"])
         self._quat_urdf = _normalize_quat((qw, qx, qy, qz))
 
+        self._gravity_vec = list(self._compute_gravity_vec_for_obs(self._quat_urdf))
+        self._estimated_velocity = list(
+            self._rotate_world_to_body(
+                self._quat_urdf,
+                self._estimated_velocity_world,
+            )
+        )
+
+    def _update_imu_measurement_state_locked(self) -> None:
+        """Transform/filter one newly received IMU packet."""
         gx = float(self._raw_imu["gyro_x"])
         gy = -float(self._raw_imu["gyro_y"])
         gz = -float(self._raw_imu["gyro_z"])
@@ -425,16 +589,229 @@ class IMUSDK:
         ax = float(self._raw_imu["acc_x"])
         ay = -float(self._raw_imu["acc_y"])
         az = -float(self._raw_imu["acc_z"])
+        self._specific_force_urdf = [ax, ay, az]
         self._acc_urdf = self._lpf_vector([ax, ay, az], "_filtered_acc_urdf")
 
-        self._gravity_vec = list(self._compute_gravity_vec_for_obs(self._quat_urdf))
+    def _attitude_is_fresh_for_imu_locked(self, imu_timestamp_us: int) -> bool:
+        """Reject integration when the latest orientation is stale."""
+        if not self.valid_ahrs:
+            self._last_imu_ahrs_delta_s = float("inf")
+            return False
 
-        # Maintain the IMU-only integration estimate returned to the policy.
-        self._update_velocity_estimation_locked()
+        host_age_s = time.monotonic() - self._last_ahrs_arrival_t
+        if host_age_s < 0.0 or host_age_s > MAX_AHRS_AGE_S:
+            self._last_imu_ahrs_delta_s = float("inf")
+            return False
+
+        ahrs_timestamp_us = int(self._raw_ahrs.get("timestamp", 0))
+        if int(imu_timestamp_us) > 0 and ahrs_timestamp_us > 0:
+            timestamp_delta_s = (
+                int(imu_timestamp_us) - ahrs_timestamp_us
+            ) * 1e-6
+            self._last_imu_ahrs_delta_s = float(timestamp_delta_s)
+            if abs(timestamp_delta_s) > MAX_AHRS_AGE_S:
+                return False
+        else:
+            self._last_imu_ahrs_delta_s = float(host_age_s)
+
+        return True
+
+    def _append_ahrs_sample_locked(self, timestamp_us: int) -> None:
+        """Store a timestamped orientation for delayed IMU interpolation."""
+        if int(timestamp_us) <= 0:
+            return
+
+        sample = (
+            int(timestamp_us),
+            tuple(float(v) for v in self._quat_urdf),
+            time.monotonic(),
+        )
+        if self._ahrs_history:
+            previous_timestamp_us = int(self._ahrs_history[-1][0])
+            if int(timestamp_us) < previous_timestamp_us:
+                # Device restart or a time discontinuity: no pre-restart IMU
+                # sample may be integrated with the new attitude timeline.
+                self._ahrs_history.clear()
+                self._reset_velocity_estimation_locked()
+            elif int(timestamp_us) == previous_timestamp_us:
+                self._ahrs_history[-1] = sample
+                return
+
+        self._ahrs_history.append(sample)
+
+    def _queue_imu_sample_locked(self, timestamp_us: int) -> None:
+        """Queue an immutable IMU snapshot until AHRS timestamps bracket it."""
+        timestamp_us = int(timestamp_us)
+        if (
+            self._last_velocity_device_timestamp_us is not None
+            and timestamp_us <= self._last_velocity_device_timestamp_us
+        ):
+            self._velocity_rejected_sample_count += 1
+            return
+        if self._pending_imu_samples:
+            last_pending_timestamp_us = int(self._pending_imu_samples[-1][0])
+            if timestamp_us <= last_pending_timestamp_us:
+                self._velocity_rejected_sample_count += 1
+                return
+
+        if len(self._pending_imu_samples) >= MAX_PENDING_IMU_SAMPLES:
+            self._pending_imu_samples.popleft()
+            self._velocity_rejected_sample_count += 1
+
+        self._pending_imu_samples.append(
+            (
+                timestamp_us,
+                tuple(float(v) for v in self._specific_force_urdf),
+                tuple(float(v) for v in self._gyro_urdf),
+                time.monotonic(),
+            )
+        )
+
+    @staticmethod
+    def _interpolate_quaternion(q0, q1, fraction: float):
+        """Shortest-path normalized lerp, sufficient over one AHRS period."""
+        q0 = _normalize_quat(tuple(float(v) for v in q0))
+        q1 = _normalize_quat(tuple(float(v) for v in q1))
+        if sum(q0[i] * q1[i] for i in range(4)) < 0.0:
+            q1 = tuple(-v for v in q1)
+        fraction = min(1.0, max(0.0, float(fraction)))
+        interpolated = tuple(
+            (1.0 - fraction) * q0[i] + fraction * q1[i]
+            for i in range(4)
+        )
+        return _normalize_quat(interpolated)
+
+    def _drain_aligned_imu_samples_locked(self) -> None:
+        """Integrate queued IMU samples with timestamp-interpolated attitude."""
+        now = time.monotonic()
+        max_alignment_delta_us = int(MAX_AHRS_AGE_S * 1e6)
+
+        while self._pending_imu_samples:
+            (
+                imu_timestamp_us,
+                specific_force_urdf,
+                gyro_urdf,
+                imu_host_time,
+            ) = self._pending_imu_samples[0]
+
+            if not self._ahrs_history:
+                if now - imu_host_time > MAX_AHRS_AGE_S:
+                    self._pending_imu_samples.popleft()
+                    self._velocity_rejected_sample_count += 1
+                    continue
+                break
+
+            oldest_ahrs = self._ahrs_history[0]
+            newest_ahrs = self._ahrs_history[-1]
+            oldest_timestamp_us = int(oldest_ahrs[0])
+            newest_timestamp_us = int(newest_ahrs[0])
+
+            sample_quaternion = None
+            nearest_timestamp_us = newest_timestamp_us
+
+            if imu_timestamp_us < oldest_timestamp_us:
+                if oldest_timestamp_us - imu_timestamp_us > max_alignment_delta_us:
+                    self._pending_imu_samples.popleft()
+                    self._velocity_rejected_sample_count += 1
+                    continue
+                sample_quaternion = oldest_ahrs[1]
+                nearest_timestamp_us = oldest_timestamp_us
+            elif imu_timestamp_us <= newest_timestamp_us:
+                if len(self._ahrs_history) == 1:
+                    sample_quaternion = newest_ahrs[1]
+                else:
+                    interval_us = newest_timestamp_us - oldest_timestamp_us
+                    if interval_us <= 0:
+                        sample_quaternion = newest_ahrs[1]
+                    else:
+                        fraction = (
+                            imu_timestamp_us - oldest_timestamp_us
+                        ) / interval_us
+                        sample_quaternion = self._interpolate_quaternion(
+                            oldest_ahrs[1],
+                            newest_ahrs[1],
+                            fraction,
+                        )
+                    if (
+                        abs(imu_timestamp_us - oldest_timestamp_us)
+                        < abs(imu_timestamp_us - newest_timestamp_us)
+                    ):
+                        nearest_timestamp_us = oldest_timestamp_us
+            else:
+                # Wait at most one bounded alignment window for the next AHRS.
+                if (
+                    imu_timestamp_us - newest_timestamp_us
+                    > max_alignment_delta_us
+                    or now - imu_host_time > MAX_AHRS_AGE_S
+                ):
+                    self._pending_imu_samples.popleft()
+                    self._velocity_rejected_sample_count += 1
+                    continue
+                break
+
+            self._pending_imu_samples.popleft()
+            self._last_imu_ahrs_delta_s = (
+                imu_timestamp_us - nearest_timestamp_us
+            ) * 1e-6
+            self._update_velocity_estimation_locked(
+                imu_timestamp_us,
+                specific_force_urdf,
+                sample_quaternion,
+                gyro_urdf,
+            )
+
+    @staticmethod
+    def _body_to_world_rotation_matrix(
+        q: Tuple[float, float, float, float]
+    ) -> Tuple[Tuple[float, float, float], ...]:
+        """Return the physical body-to-world rotation represented by ``q``.
+
+        DETA40 reports a body-to-world quaternion.  The policy gravity
+        observation historically uses the opposite multiplication convention,
+        so observation projection and physical vector rotation must not share
+        the same helper (see :meth:`_compute_gravity_vec_for_obs`).
+        """
+        qw, qx, qy, qz = _normalize_quat(q)
+        return (
+            (
+                1.0 - 2.0 * (qy * qy + qz * qz),
+                2.0 * (qx * qy - qw * qz),
+                2.0 * (qx * qz + qw * qy),
+            ),
+            (
+                2.0 * (qx * qy + qw * qz),
+                1.0 - 2.0 * (qx * qx + qz * qz),
+                2.0 * (qy * qz - qw * qx),
+            ),
+            (
+                2.0 * (qx * qz - qw * qy),
+                2.0 * (qy * qz + qw * qx),
+                1.0 - 2.0 * (qx * qx + qy * qy),
+            ),
+        )
+
+    @classmethod
+    def _rotate_world_to_body(cls, q, vector):
+        rotation = cls._body_to_world_rotation_matrix(q)
+        return tuple(
+            sum(rotation[row][column] * float(vector[row]) for row in range(3))
+            for column in range(3)
+        )
+
+    @classmethod
+    def _rotate_body_to_world(cls, q, vector):
+        rotation = cls._body_to_world_rotation_matrix(q)
+        return tuple(
+            sum(rotation[row][column] * float(vector[column]) for column in range(3))
+            for row in range(3)
+        )
 
     @staticmethod
     def _compute_gravity_vec_for_obs(q: Tuple[float, float, float, float]) -> Tuple[float, float, float]:
-        qw, qx, qy, qz = q
+        # Keep the historical policy convention used by the C++ deployment.
+        # This is R(q) * gravity, whereas physical world-to-body projection is
+        # R(q).T * gravity and is handled separately below.
+        qw, qx, qy, qz = _normalize_quat(q)
         gx = -2.0 * (qx * qz + qw * qy)
         gy = -2.0 * (qy * qz - qw * qx)
         gz = -(1.0 - 2.0 * (qx * qx + qy * qy))
@@ -445,51 +822,190 @@ class IMUSDK:
 
     @staticmethod
     def _compute_gravity_vec_for_comp(q: Tuple[float, float, float, float]) -> Tuple[float, float, float]:
-        # Compensation and policy observation must use one shared world-to-body
-        # gravity projection, including the same defensive normalization.
-        return IMUSDK._compute_gravity_vec_for_obs(q)
+        # Physical gravity projection in the accelerometer/body frame.  Do not
+        # replace this with the policy observation formula above: their
+        # horizontal signs differ for the DETA40 quaternion convention.
+        gx, gy, gz = IMUSDK._rotate_world_to_body(q, (0.0, 0.0, -1.0))
+        n = math.sqrt(gx * gx + gy * gy + gz * gz)
+        if n > 1e-2:
+            return (gx / n, gy / n, gz / n)
+        return (0.0, 0.0, -1.0)
 
-    def _update_velocity_estimation_locked(self) -> None:
-        now = time.monotonic()
-        dt = float(now - self._last_vel_update_t)
-        self._last_vel_update_t = now
+    def _calibrate_accelerometer_bias_locked(self) -> bool:
+        sample_count = len(self._quiet_bias_candidates)
+        self._last_bias_calibration_sample_count = sample_count
+        if sample_count < BIAS_CALIBRATION_MIN_SAMPLES:
+            return False
 
-        if dt > 0.01 or dt < 0.0001:
+        # Component-wise median rejects isolated contact/vibration samples.
+        calibrated_bias = []
+        for axis in range(3):
+            values = sorted(float(sample[axis]) for sample in self._quiet_bias_candidates)
+            middle = len(values) // 2
+            if len(values) % 2:
+                calibrated_bias.append(values[middle])
+            else:
+                calibrated_bias.append(0.5 * (values[middle - 1] + values[middle]))
+
+        self._accelerometer_bias_urdf = calibrated_bias
+        self._quiet_bias_candidates.clear()
+        return True
+
+    def _reset_velocity_estimation_locked(self) -> None:
+        self._linear_acceleration_world = [0.0, 0.0, 0.0]
+        self._filtered_linear_acceleration_world = None
+        self._estimated_velocity_world = [0.0, 0.0, 0.0]
+        self._estimated_velocity = [0.0, 0.0, 0.0]
+        self._last_acceleration_world = None
+        self._last_velocity_sample_time_s = None
+        self._last_velocity_device_timestamp_us = None
+        self._velocity_time_source = None
+        self._last_velocity_dt_s = 0.0
+        self._last_velocity_update_host_t = 0.0
+        self._pending_imu_samples.clear()
+
+    def _update_velocity_estimation_locked(
+        self,
+        timestamp_us: int,
+        specific_force_urdf=None,
+        sample_quaternion=None,
+        gyro_urdf=None,
+    ) -> None:
+        """Integrate one fresh IMU sample in the non-rotating world frame."""
+        if specific_force_urdf is None:
+            specific_force_urdf = self._specific_force_urdf
+        if sample_quaternion is None:
+            sample_quaternion = self._quat_urdf
+        if gyro_urdf is None:
+            gyro_urdf = self._gyro_urdf
+
+        specific_force_urdf = [float(v) for v in specific_force_urdf]
+        sample_quaternion = _normalize_quat(
+            tuple(float(v) for v in sample_quaternion)
+        )
+        gyro_urdf = [float(v) for v in gyro_urdf]
+
+        gravity_body = self._compute_gravity_vec_for_comp(sample_quaternion)
+        bias_candidate = [
+            specific_force_urdf[i] + GRAVITY_ACCELERATION * gravity_body[i]
+            for i in range(3)
+        ]
+        candidate_norm = math.sqrt(sum(v * v for v in bias_candidate))
+        gyro_norm = math.sqrt(sum(v * v for v in gyro_urdf))
+        if (
+            candidate_norm <= BIAS_CALIBRATION_MAX_ACCEL_MPS2
+            and gyro_norm <= BIAS_CALIBRATION_MAX_GYRO_RAD_S
+        ):
+            self._quiet_bias_candidates.append(tuple(bias_candidate))
+
+        corrected_specific_force_urdf = [
+            specific_force_urdf[i] - self._accelerometer_bias_urdf[i]
+            for i in range(3)
+        ]
+        specific_force_world = self._rotate_body_to_world(
+            sample_quaternion,
+            corrected_specific_force_urdf,
+        )
+        acceleration_world = [
+            float(specific_force_world[0]),
+            float(specific_force_world[1]),
+            float(specific_force_world[2] - GRAVITY_ACCELERATION),
+        ]
+        if not all(math.isfinite(v) for v in acceleration_world):
+            self._velocity_rejected_sample_count += 1
             return
 
-        gravity_body_x, gravity_body_y, gravity_body_z = (
-            self._compute_gravity_vec_for_comp(self._quat_urdf)
+        # Filter only after gravity compensation in the fixed world frame. A
+        # body-frame LPF followed by a newer attitude leaks gravity during pitch.
+        acceleration_world = self._lpf_vector(
+            acceleration_world,
+            "_filtered_linear_acceleration_world",
         )
+        self._linear_acceleration_world = list(acceleration_world)
 
-        g = 9.81
-        ax_comp = self._acc_urdf[0] + gravity_body_x * g
-        ay_comp = self._acc_urdf[1] + gravity_body_y * g
-        az_comp = self._acc_urdf[2] + gravity_body_z * g
+        if int(timestamp_us) > 0:
+            sample_time_s = float(timestamp_us) * 1e-6
+            time_source = "device_timestamp"
+        else:
+            sample_time_s = time.monotonic()
+            time_source = "monotonic_fallback"
 
-        gyro_norm = (self._gyro_urdf[0] ** 2 + self._gyro_urdf[1] ** 2 + self._gyro_urdf[2] ** 2) ** 0.5
-        acc_norm = (ax_comp ** 2 + ay_comp ** 2 + az_comp ** 2) ** 0.5
+        if (
+            self._last_velocity_sample_time_s is None
+            or self._velocity_time_source != time_source
+        ):
+            self._last_velocity_sample_time_s = sample_time_s
+            self._last_velocity_device_timestamp_us = (
+                int(timestamp_us) if time_source == "device_timestamp" else None
+            )
+            self._velocity_time_source = time_source
+            self._last_acceleration_world = list(acceleration_world)
+            self._last_velocity_dt_s = 0.0
+            self._last_velocity_update_host_t = time.monotonic()
+            return
 
-        decay = 0.95
-        if acc_norm < 0.5 and gyro_norm < 0.1:
-            decay = 0.7
+        if time_source == "device_timestamp":
+            previous_timestamp_us = self._last_velocity_device_timestamp_us
+            if previous_timestamp_us is None:
+                previous_timestamp_us = int(timestamp_us)
+            dt = (int(timestamp_us) - previous_timestamp_us) * 1e-6
+        else:
+            dt = float(sample_time_s - self._last_velocity_sample_time_s)
+        self._last_velocity_dt_s = dt
 
-        estimated_velocity = [
-            decay * self._estimated_velocity[0] + 0.5 * (ax_comp + self._last_acc[0]) * dt,
-            decay * self._estimated_velocity[1] + 0.5 * (ay_comp + self._last_acc[1]) * dt,
-            decay * self._estimated_velocity[2] + 0.5 * (az_comp + self._last_acc[2]) * dt,
+        if dt < 0.0:
+            # A backwards device timestamp normally means the IMU rebooted.
+            self._reset_velocity_estimation_locked()
+            self._last_velocity_sample_time_s = sample_time_s
+            self._last_velocity_device_timestamp_us = (
+                int(timestamp_us) if time_source == "device_timestamp" else None
+            )
+            self._velocity_time_source = time_source
+            self._last_acceleration_world = list(acceleration_world)
+            self._velocity_rejected_sample_count += 1
+            return
+
+        if dt < VELOCITY_DT_MIN_S or dt > VELOCITY_DT_MAX_S:
+            # Rebase the trapezoid after duplicates or dropped-packet gaps; do
+            # not integrate a stale acceleration across the missing interval.
+            self._last_velocity_sample_time_s = sample_time_s
+            self._last_velocity_device_timestamp_us = (
+                int(timestamp_us) if time_source == "device_timestamp" else None
+            )
+            self._last_acceleration_world = list(acceleration_world)
+            self._velocity_rejected_sample_count += 1
+            return
+
+        previous_acceleration = self._last_acceleration_world
+        if previous_acceleration is None:
+            previous_acceleration = acceleration_world
+
+        estimated_velocity_world = [
+            self._estimated_velocity_world[i]
+            + 0.5
+            * (float(previous_acceleration[i]) + float(acceleration_world[i]))
+            * dt
+            for i in range(3)
         ]
 
-        self._last_acc[0] = ax_comp
-        self._last_acc[1] = ay_comp
-        self._last_acc[2] = az_comp
+        # Preserve the old estimator's safety bound without applying its
+        # packet-rate-dependent 0.95/0.7 decay to genuine constant velocity.
+        speed = math.sqrt(sum(v * v for v in estimated_velocity_world))
+        if speed > MAX_ESTIMATED_SPEED_MPS:
+            scale = MAX_ESTIMATED_SPEED_MPS / speed
+            estimated_velocity_world = [v * scale for v in estimated_velocity_world]
 
-        max_vel = 2.0
-        for i in range(3):
-            if estimated_velocity[i] > max_vel:
-                estimated_velocity[i] = max_vel
-            elif estimated_velocity[i] < -max_vel:
-                estimated_velocity[i] = -max_vel
-        self._estimated_velocity = self._lpf_vector(
-            estimated_velocity,
-            "_filtered_estimated_velocity",
+        self._estimated_velocity_world = estimated_velocity_world
+        self._estimated_velocity = list(
+            self._rotate_world_to_body(
+                self._quat_urdf,
+                self._estimated_velocity_world,
+            )
         )
+        self._last_acceleration_world = list(acceleration_world)
+        self._last_velocity_sample_time_s = sample_time_s
+        self._last_velocity_device_timestamp_us = (
+            int(timestamp_us) if time_source == "device_timestamp" else None
+        )
+        self._last_velocity_update_host_t = time.monotonic()
+        self._velocity_update_count += 1
