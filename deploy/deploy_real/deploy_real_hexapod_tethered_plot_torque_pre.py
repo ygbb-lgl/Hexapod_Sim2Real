@@ -83,6 +83,7 @@ class TensionTrainingCsvLogger:
             ("velocity_command", 3), ("policy_action", 18),
             ("joint_position", 18), ("joint_velocity", 18),
             ("body_gravity_vector", 3), ("body_angular_velocity", 3),
+            ("body_linear_velocity", 3),
             ("body_linear_acceleration", 3),
         ):
             vectors.extend(cls._names(name, size))
@@ -101,7 +102,8 @@ class TensionTrainingCsvLogger:
               torque_command_issued_nm: float, motor_position_rad: float,
               force_reference_n: float, velocity_command, policy_action,
               joint_position, joint_velocity, body_gravity_vector,
-              body_angular_velocity, body_linear_acceleration,
+              body_angular_velocity, body_linear_velocity,
+              body_linear_acceleration,
               imu_valid: bool, tension_sensor_valid: bool,
               saturation_flag: bool, emergency_flag: bool = False) -> None:
         q = np.asarray(joint_position, dtype=np.float32).reshape(18)
@@ -129,6 +131,7 @@ class TensionTrainingCsvLogger:
         self._put_vector(row, "joint_velocity", joint_velocity, 18)
         self._put_vector(row, "body_gravity_vector", body_gravity_vector, 3)
         self._put_vector(row, "body_angular_velocity", body_angular_velocity, 3)
+        self._put_vector(row, "body_linear_velocity", body_linear_velocity, 3)
         self._put_vector(row, "body_linear_acceleration",
                          body_linear_acceleration, 3)
         # 写入数据
@@ -420,7 +423,9 @@ class Controller:
 
         # Predictor-training data is kept separately from plotting/motor debug
         # logs.  One process invocation is one independent trajectory.
-        self.trajectory_id = f"hexapod_{timestamp}"
+        # Distinguish data collected by this learned-predictor (pre) script
+        # from CSV trajectories produced by the baseline collector.
+        self.trajectory_id = f"hexapod_{timestamp}_pre"
         pre_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pre_data")
         self.pre_tension_logger = TensionTrainingCsvLogger(
             directory=pre_data_dir,
@@ -920,6 +925,7 @@ class Controller:
             joint_velocity=self.dqj,
             body_gravity_vector=gravity_orientation,
             body_angular_velocity=ang_vel,
+            body_linear_velocity=linvel,
             body_linear_acceleration=body_linear_acceleration,
             imu_valid=imu_valid,
             tension_sensor_valid=tension_sensor_valid,
