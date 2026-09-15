@@ -1,6 +1,5 @@
 import numpy as np
 import time
-import torch
 import csv
 import os
 from datetime import datetime
@@ -22,10 +21,18 @@ from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
 from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
 from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
+from hexapod_tethered_utils.moe_policy import (
+    ACTION_DIM,
+    STATE_DIM,
+    build_deployable_state,
+    load_moe_policy,
+    unit_direction_from_yaw_pitch,
+)
+
 
 import config_hexapod_tethered
 
-from config_hexapod_tethered import Config
+from config_hexapod_tethered_moe import MoEConfig
 
 # 记录数据
 class TensionTrainingCsvLogger:
@@ -343,7 +350,7 @@ class RealTimePlotter:
 
 
 class Controller:
-    def __init__(self,config:Config) -> None:
+    def __init__(self, config: MoEConfig) -> None:
         self.config = config
         #self.remote_controller = RemoteController()
 
@@ -351,21 +358,24 @@ class Controller:
         self.gamepad = None
         if Gamepad is not None:
             try:
-                self.gamepad = Gamepad()
+                self.gamepad = Gamepad(
+                    vel_scale_x=float(config.command_scale[0]),
+                    vel_scale_y=float(config.command_scale[1]),
+                    vel_scale_rot=float(config.command_scale[2]),
+                )
             except Exception as e:
                 self.gamepad = None
                 print(f"[gamepad] disabled due to error: {e}")
 
-        self.ang_vel_scale = config.ang_vel
-        self.dof_pos_scale = config.dof_pos
-        self.dof_vel_scale = config.dof_vel
-        self.lin_vel_scale = config.lin_vel
-
         # Policy-side per-joint gains (indexed by policy_idx 0..17)
         self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
 
-        self.policy = torch.jit.load(config.policy_path)
-        self.policy.eval()
+        # The dedicated MoE YAML accepts either a raw RSL-RL checkpoint or the
+        # recurrent TorchScript exported by the sim2sim script.
+        self.policy_path = config.policy_path
+        self.policy = load_moe_policy(
+            self.policy_path, device=config.policy_device
+        )
         # 预热网络，减少第一次推理的延迟
         self._warm_up()
         
@@ -373,10 +383,21 @@ class Controller:
         self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.spool_q = np.zeros(1, dtype=np.float32)
-        self.action = np.zeros(config.num_actions,dtype=np.float32)
+        if int(config.num_actions) != ACTION_DIM:
+            raise ValueError(
+                f"MoE policy requires num_actions={ACTION_DIM}, "
+                f"got {config.num_actions}"
+            )
+        self.action = np.zeros(ACTION_DIM,dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
-        self.obs = np.zeros(config.num_obs,dtype=np.float32)
+        self.obs = np.zeros(STATE_DIM,dtype=np.float32)
+        if int(config.num_obs) != STATE_DIM:
+            raise ValueError(
+                f"MoE policy requires num_obs={STATE_DIM}, got {config.num_obs}"
+            )
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
+        self._last_tether_yaw = 0.0
+        self._last_tether_pitch = 0.0
         self.counter = 0
         # Schedule observation start times, rather than sleeping at the end of
         # run().  End-of-cycle sleeping does not account for work performed by
@@ -588,6 +609,8 @@ class Controller:
         self.timing_warning_message = None
         self._timing_warning_sequence = 0
         self._timing_warning_reported_sequence = 0
+        self.action.fill(0.0)
+        self.policy.reset()
         print(f"[PreTensionCSV] new trajectory after pause: {self.trajectory_id}")
 
     def _build_policy_joint_gains(self):
@@ -628,14 +651,12 @@ class Controller:
         return kp, kd
 
     def _warm_up(self):
-        obs = torch.ones((1, int(self.config.num_obs)))
-        # Keep warm-up and runtime in the same autograd mode.  This particular
-        # TorchScript policy is incompatible with inference tensors, while
-        # no_grad still provides the desired gradient-free execution.
-        with torch.no_grad():
-            for _ in range(10):
-                _ = self.policy(obs)
-        print('Network has been warmed up.')
+        obs = np.zeros(STATE_DIM, dtype=np.float32)
+        for _ in range(10):
+            _ = self.policy(obs)
+        # Warm-up history must never leak into the real control episode.
+        self.policy.reset()
+        print(f'Network has been warmed up ({STATE_DIM}-D recurrent MoE).')
 
 
     # 零力矩模式
@@ -732,7 +753,7 @@ class Controller:
     def print_pitch_angle(self):
         pitch_value = self.pitch_sensor.get_angle()
         if pitch_value is not None:
-            print(f"Pitch Angle: {pitch_value:.3f} degrees")
+            print(f"Pitch Angle: {pitch_value:.3f} rad")
         else:
             print("No pitch angle data available.")
 
@@ -745,6 +766,112 @@ class Controller:
             print(f"Yaw Differ Angle: {yaw_differ_value:.3f} rad")
         else:
             print("No yaw differ angle data available.")
+
+    def _read_imu_observation(self):
+        """Return deployable IMU fields plus diagnostic-only motion data."""
+        velocity = self.imu.get_linear_velocity()
+        imu_data = self.imu.get_imu_data()
+        gravity = self.imu.get_gravity_acceleration()
+        # Linear velocity is only retained for existing CSV diagnostics.  It
+        # must not invalidate gyro/gravity, because the MoE estimator exists
+        # precisely to infer velocity when it is not directly measurable.
+        if imu_data is None or gravity is None:
+            return (
+                np.zeros(3, dtype=np.float32),
+                np.zeros(3, dtype=np.float32),
+                np.array([0.0, 0.0, -1.0], dtype=np.float32),
+                np.zeros(3, dtype=np.float32),
+                False,
+            )
+
+        velocity_valid = velocity is not None
+        if velocity_valid:
+            linear_velocity = np.asarray(velocity, dtype=np.float32).reshape(3)
+            velocity_valid = bool(np.all(np.isfinite(linear_velocity)))
+        if not velocity_valid:
+            linear_velocity = np.zeros(3, dtype=np.float32)
+        angular_velocity = np.asarray(
+            [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']],
+            dtype=np.float32,
+        )
+        gravity_body = np.asarray(gravity, dtype=np.float32).reshape(3)
+        linear_acceleration = np.asarray(
+            [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']],
+            dtype=np.float32,
+        )
+        valid = bool(
+            np.all(np.isfinite(angular_velocity))
+            and np.all(np.isfinite(gravity_body))
+            and np.all(np.isfinite(linear_acceleration))
+        )
+        gravity_norm = float(np.linalg.norm(gravity_body))
+        valid = valid and gravity_norm > 1e-6
+        if not valid:
+            return (
+                np.zeros(3, dtype=np.float32),
+                np.zeros(3, dtype=np.float32),
+                np.array([0.0, 0.0, -1.0], dtype=np.float32),
+                np.zeros(3, dtype=np.float32),
+                False,
+            )
+        return (
+            linear_velocity,
+            angular_velocity,
+            gravity_body / gravity_norm,
+            linear_acceleration,
+            bool(velocity_valid),
+        )
+
+    def _read_tether_observation(self):
+        """Read tension/yaw/pitch and reconstruct the trunk-frame unit vector."""
+        tension = self.tension_sensor.get_cable_tension()
+        tension_valid = tension is not None and np.isfinite(tension)
+        tension = max(float(tension), 0.0) if tension_valid else 0.0
+
+        pitch = self.pitch_sensor.get_angle()  # calibrated radians
+        if pitch is not None and np.isfinite(pitch):
+            self._last_tether_pitch = float(pitch)
+
+        yaw_raw_deg = self.yaw_sensor.get_angle()
+        yaw = self.yaw_sensor.get_yaw_angle(
+            motor_angle_deg=float(self.spool_q[0]),
+            yaw_value=yaw_raw_deg,
+            offset_deg=self.config.offset_deg,
+        )
+        if yaw is not None and np.isfinite(yaw):
+            self._last_tether_yaw = float(yaw)
+
+        direction = unit_direction_from_yaw_pitch(
+            self._last_tether_yaw, self._last_tether_pitch
+        )
+        return (
+            tension,
+            bool(tension_valid),
+            self._last_tether_yaw,
+            self._last_tether_pitch,
+            direction,
+        )
+
+    def _build_moe_observation(
+        self,
+        *,
+        angular_velocity: np.ndarray,
+        gravity_body: np.ndarray,
+        tension: float,
+        tether_direction_body: np.ndarray,
+    ) -> np.ndarray:
+        """Assemble the exact training-time 68-D deployable state."""
+        self.obs = build_deployable_state(
+            gyro=angular_velocity,
+            gravity=gravity_body,
+            leg_joint_position_error=(self.qj - self.config.default_angles),
+            leg_joint_velocity=self.dqj,
+            previous_action=self.action,
+            command=self.cmd,
+            cable_tension=tension,
+            tether_unit_direction_body=tether_direction_body,
+        )
+        return self.obs
 
     def run(self):
         if self.gamepad is None:
@@ -762,97 +889,55 @@ class Controller:
         # Snapshot tau_actual_k before computing/writing the new command u_k.
         # Do not read this shared driver buffer again for the same CSV row.
         spool_torque_actual_pre_action = float(2.1 * self.robot.spool_state_buffer.torque[0])
-        vel = self.imu.get_linear_velocity()
-        imu_data = self.imu.get_imu_data()
-        grav = self.imu.get_gravity_acceleration()
 
-        tension_value = self.tension_sensor.get_cable_tension()
-        tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
-        if not tension_sensor_valid:
-            tension_value = 0.0
-            
-        pitch_value = self.pitch_sensor.get_angle()
-        if pitch_value is None:
-            pitch_value = 0.0
-            
-        yaw_value = self.yaw_sensor.get_angle()
-        if yaw_value is None:
-            yaw_value = 0.0
+        (
+            linvel,
+            ang_vel,
+            gravity_orientation,
+            body_linear_acceleration,
+            imu_valid,
+        ) = self._read_imu_observation()
 
-        # 计算yaw差值（arm相对body的yaw角度），作为观测输入提供给策略网络
-        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=yaw_value, offset_deg=self.config.offset_deg)
-        yaw_differ_value = 0
-        if imu_data is None or vel is None or grav is None:
-            # 如果没有 IMU 数据，使用全 0
-            linvel = np.zeros(3, dtype=np.float32)
-            ang_vel = np.zeros(3, dtype=np.float32)
-            gravity_orientation = np.array([0.0, 0.0, -1.0], dtype=np.float32)  # 假设重力向下
-            body_linear_acceleration = np.zeros(3, dtype=np.float32)
-            imu_valid = False
-        else:
-            linvel = np.asarray(vel, dtype=np.float32)
-            ang_vel = np.asarray(
-                [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']], dtype=np.float32
-            )
-            gravity_orientation = np.asarray(grav, dtype=np.float32)
-            body_linear_acceleration = np.asarray(
-                [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']], dtype=np.float32
-            )
-            imu_valid = bool(
-                np.all(np.isfinite(linvel))
-                and np.all(np.isfinite(ang_vel))
-                and np.all(np.isfinite(gravity_orientation))
-                and np.all(np.isfinite(body_linear_acceleration))
-            )
+        (
+            tension_value,
+            tension_sensor_valid,
+            yaw_differ_value,
+            pitch_value,
+            tether_direction_body,
+        ) = self._read_tether_observation()
 
-            # Match sim2sim convention: gravity is a unit vector in body frame.
-            g_norm = float(np.linalg.norm(gravity_orientation))
-            if g_norm > 1e-6:
-                gravity_orientation = gravity_orientation / g_norm
-
-
-        cmd = self.gamepad.get_command()
+        # Gamepad already applies the physical command range configured in
+        # __init__; do not multiply command_scale a second time.
+        self.cmd[:] = np.asarray(self.gamepad.get_command(), dtype=np.float32)
         
-        self.cmd[0] = np.float32(cmd[0])
-        self.cmd[1] = np.float32(cmd[1])
-        self.cmd[2] = np.float32(cmd[2])
+        observation = self._build_moe_observation(
+            angular_velocity=ang_vel,
+            gravity_body=gravity_orientation,
+            tension=tension_value,
+            tether_direction_body=tether_direction_body,
+        )
+        self.action = self.policy(observation).copy()
 
-        qj_obs = self.qj.copy()
-        qj_obs = qj_obs - self.config.default_angles
-        dqj_obs = self.dqj.copy()
-        dqj_obs = dqj_obs 
-
-        self.obs[:3] = linvel * self.lin_vel_scale
-        self.obs[3:6] = ang_vel * self.ang_vel_scale
-        self.obs[6:9] = gravity_orientation
-        self.obs[9:27] = qj_obs * self.dof_pos_scale
-        self.obs[27:45] = dqj_obs * self.dof_vel_scale
-        self.obs[45:64] = self.action
-
-        # Command is stored in obs with scaling (match sim2sim layout).
-        # Avoid printing at control rate (50Hz) since it can disturb timing.
-        self.obs[64:67] = self.cmd * self.config.command_scale
-        
-        #self.obs[67] = np.float32(0)
-        self.obs[67] = np.float32(tension_value)
-        self.obs[68] = np.float32(0)
-        #self.obs[68] = np.float32(yaw_differ_value)
-        self.obs[69] = np.float32(pitch_value)
-
-        obs_tensor = torch.from_numpy(self.obs).unsqueeze(0)
-        with torch.no_grad():
-            action_tensor = self.policy(obs_tensor)
-        # Break the storage alias before NumPy performs in-place clipping.
-        self.action = action_tensor.detach().cpu().numpy().squeeze().copy()
-
-        # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
-        self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
-        self.action[18] = np.clip(self.action[18], 0.0, 2.0)
+        # The training wrapper clips the raw 19-D policy action to [-10, 10]
+        # before storing that same value in the next observation.  The cable
+        # actuator's [0, 2] range is applied only when forming its command.
+        self.action[:] = np.clip(
+            self.action,
+            -self.config.policy_action_clip,
+            self.config.policy_action_clip,
+        )
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
         
-        target_tension = self.action[18] * self.config.tension_action_scale
+        cable_action = float(
+            np.clip(
+                self.action[18],
+                self.config.cable_action_range[0],
+                self.config.cable_action_range[1],
+            )
+        )
+        target_tension = cable_action * self.config.tension_action_scale
 
         for i in range(18):
             q = target_dof_pos[i]
@@ -902,7 +987,7 @@ class Controller:
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
         spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
-            speed_input=float(cmd[0]),
+            speed_input=float(self.cmd[0]),
             #speed_input=float(linvel[0]),
             yaw=float(yaw_differ_value),
             tension_ref=float(target_tension),
@@ -927,7 +1012,7 @@ class Controller:
             torque_command_issued_nm=float(spool_torque_cmd),
             motor_position_rad=float(self.spool_q[0]),
             force_reference_n=float(target_tension),        
-            velocity_command=self.cmd * self.config.command_scale,
+            velocity_command=self.cmd,
             # Store the physical joint-position increment seen by the actuator,
             # not the raw dimensionless policy output.
             policy_action=self.action[:18] * float(self.config.action_scale),
@@ -951,8 +1036,11 @@ class Controller:
 
 if __name__ == "__main__":
 
-    config_path = f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/hexapod_tethered.yaml"
-    config = Config(config_path)
+    config_path = (
+        f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/"
+        "hexapod_tethered_moe.yaml"
+    )
+    config = MoEConfig(config_path)
 
     # ChannelFactoryInitialize(0, args.net)
 
