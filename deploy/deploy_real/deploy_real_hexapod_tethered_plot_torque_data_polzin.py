@@ -21,11 +21,36 @@ from hexapod_tethered_utils.joystick_reader import Gamepad
 from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
 from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
 from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
+from hexapod_tethered_utils.hexapod_mjcf_kinematics import (
+    HexapodMjcfKinematics,
+    slope_basis_body,
+)
 
 
 import config_hexapod_tethered
 
 from config_hexapod_tethered import Config
+
+# Fixed physical parameters for the real-world Polzin--Hughes comparison.
+# The policy controls only the 18 leg joints; cable tension is supplied by the
+# deterministic controller below using all six dynamically updated feet.
+ROBOT_MASS_KG = 38.19842
+GRAVITY_M_S2 = 9.81
+SLOPE_ANGLE_DEG = 17.0
+FRICTION_COEFFICIENT = 0.6
+# Tether/arm yaw relative to the uphill direction.
+TETHER_YAW_DEG = 0.0
+# Gravity provides roll/pitch but not heading; the straight-uphill test fixes
+# the trunk x-axis heading relative to the ramp as a separate zero angle.
+BODY_HEADING_REL_UPHILL_DEG = 0.0
+ANCHOR_HEIGHT_M = 0.20
+POLZIN_NUM_TIP_DIRECTIONS = 360
+
+# Match the reachable simulated tendon interval and its observation
+# normalization: the simulated cable command is ctrl = T / 200.
+MIN_TETHER_FORCE_N = 0.0
+MAX_TETHER_FORCE_N = 400.0
+SIM_CABLE_FORCE_PER_CTRL_N = 200.0
 
 # 记录数据
 class TensionTrainingCsvLogger:
@@ -378,6 +403,25 @@ class Controller:
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
         self.counter = 0
+        # The spool is zeroed before the first policy cycle.  The first valid
+        # geometry-dependent target is applied in run() and is exposed to the
+        # policy through obs[63] on the following cycle.
+        self._tether_force_target_n = 0.0
+        self._previous_tether_ctrl = 0.0
+
+        # Initialize the lightweight MJCF-derived kinematic constants once.
+        # forward() uses only the measured 18 joint angles; it neither loads
+        # nor steps a simulator and does not evaluate contacts.
+        self._kinematics = HexapodMjcfKinematics()
+        self._polzin_tip_angles = (
+            -np.pi
+            + 2.0
+            * np.pi
+            * np.arange(POLZIN_NUM_TIP_DIRECTIONS, dtype=np.float64)
+            / POLZIN_NUM_TIP_DIRECTIONS
+        )
+        self._polzin_tip_cos = np.cos(self._polzin_tip_angles)
+        self._polzin_tip_sin = np.sin(self._polzin_tip_angles)
         # Schedule observation start times, rather than sleeping at the end of
         # run().  End-of-cycle sleeping does not account for work performed by
         # the outer button/state loop and produced ~22 ms periods for a 20 ms
@@ -583,6 +627,10 @@ class Controller:
         )
         # The spool is explicitly zeroed before this method is called.
         self._previous_spool_torque_command_nm = 0.0
+        self._tether_force_target_n = 0.0
+        self._previous_tether_ctrl = 0.0
+        # Holding the default pose is equivalent to a zero leg-policy action.
+        self.action.fill(0.0)
         self._next_cycle_start_ns = None
         self._last_observation_timestamp_ns = None
         self.timing_warning_message = None
@@ -746,6 +794,157 @@ class Controller:
         else:
             print("No yaw differ angle data available.")
 
+    def _compute_polzin_tension(
+        self,
+        gravity_body: np.ndarray,
+        gravity_valid: bool,
+    ) -> float:
+        """Evaluate the all-six-foot Polzin--Hughes tension target.
+
+        This mirrors the sim2sim Eqs. (12)--(14) implementation.  The real
+        experiment fixes the in-plane tether yaw to zero and assumes the
+        tether is parallel to the 17-degree slope.  Consequently the remote
+        anchor height is recorded above but is not substituted for h_t: h_t
+        is the robot-side tether-start height returned by the MJCF kinematics.
+
+        Invalid IMU or geometry data holds the preceding valid target.  The
+        initial held target is zero because the spool is explicitly zeroed
+        before entering the policy loop.
+        """
+        previous_target = float(self._tether_force_target_n)
+        gravity_body = np.asarray(gravity_body, dtype=np.float64)
+        if (
+            not gravity_valid
+            or gravity_body.shape != (3,)
+            or not np.all(np.isfinite(gravity_body))
+            or float(np.linalg.norm(gravity_body)) <= 1e-6
+        ):
+            return previous_target
+
+        geometry = self._kinematics.forward(
+            self.qj,
+            arm_yaw_rad=np.deg2rad(TETHER_YAW_DEG),
+        )
+        if not geometry.geometry_valid:
+            return previous_target
+
+        feet = np.asarray(geometry.feet_body, dtype=np.float64)
+        com = np.asarray(geometry.com_body, dtype=np.float64)
+        tether_start = np.asarray(
+            geometry.tether_start_body,
+            dtype=np.float64,
+        )
+        foot_radii = np.asarray(
+            geometry.foot_radii_m,
+            dtype=np.float64,
+        )
+        if (
+            feet.shape != (6, 3)
+            or com.shape != (3,)
+            or tether_start.shape != (3,)
+            or foot_radii.shape != (6,)
+            or not np.all(np.isfinite(feet))
+            or not np.all(np.isfinite(com))
+            or not np.all(np.isfinite(tether_start))
+            or not np.all(np.isfinite(foot_radii))
+        ):
+            return previous_target
+
+        slope_rad = np.deg2rad(SLOPE_ANGLE_DEG)
+        beta = np.deg2rad(TETHER_YAW_DEG)
+        normal, uphill, cross_slope = slope_basis_body(
+            gravity_body,
+            slope_rad,
+            body_yaw_rad=np.deg2rad(BODY_HEADING_REL_UPHILL_DEG),
+            gravity_valid=True,
+        )
+        normal = np.asarray(normal, dtype=np.float64)
+        uphill = np.asarray(uphill, dtype=np.float64)
+        cross_slope = np.asarray(cross_slope, dtype=np.float64)
+        if not (
+            np.all(np.isfinite(normal))
+            and np.all(np.isfinite(uphill))
+            and np.all(np.isfinite(cross_slope))
+        ):
+            return previous_target
+
+        sin_alpha = float(np.sin(slope_rad))
+        cos_alpha = float(np.cos(slope_rad))
+        weight_n = ROBOT_MASS_KG * GRAVITY_M_S2
+
+        # The real comparison deliberately regards all six dynamically
+        # positioned feet as the support set; no contact-state estimate is
+        # used.  The support plane follows the sim2sim mean-foot convention.
+        support_surface_coord = feet @ normal - foot_radii
+        ground_normal_coord = float(np.mean(support_surface_coord))
+        h_g = max(float(np.dot(com, normal)) - ground_normal_coord, 1e-5)
+        h_t = max(
+            float(np.dot(tether_start, normal)) - ground_normal_coord,
+            1e-5,
+        )
+
+        # beta=0 makes the tether-side direction the cross-slope direction,
+        # while retaining the general equation below for direct traceability
+        # to the sim2sim implementation.
+        tether_side = cross_slope
+        tip_directions = (
+            self._polzin_tip_cos[:, None] * uphill[None, :]
+            + self._polzin_tip_sin[:, None] * tether_side[None, :]
+        )
+        feet_from_com = feet - com[None, :]
+        foot_support = feet_from_com @ tip_directions.T
+        support_distance = np.max(foot_support, axis=0)
+        tip_numerator = weight_n * (
+            support_distance * cos_alpha
+            + h_g * sin_alpha * self._polzin_tip_cos
+        )
+        tip_denominator = h_t * np.cos(self._polzin_tip_angles - beta)
+        tip_force_by_direction = np.full_like(tip_denominator, np.inf)
+        valid_tip_direction = tip_denominator > 1e-8
+        tip_force_by_direction[valid_tip_direction] = (
+            tip_numerator[valid_tip_direction]
+            / tip_denominator[valid_tip_direction]
+        )
+        tip_max = float(np.min(tip_force_by_direction))
+
+        slip_radicand = (
+            (FRICTION_COEFFICIENT * cos_alpha) ** 2
+            - (sin_alpha * np.sin(beta)) ** 2
+        )
+        slip_root = float(np.sqrt(max(float(slip_radicand), 0.0)))
+        slip_center = float(np.cos(beta) * sin_alpha)
+        slip_lower = weight_n * (slip_center - slip_root)
+
+        tan_alpha = sin_alpha / max(cos_alpha, 1e-8)
+        beta_max = float(
+            np.arcsin(
+                np.clip(
+                    FRICTION_COEFFICIENT / max(tan_alpha, 1e-8),
+                    0.0,
+                    1.0,
+                )
+            )
+        )
+        slip_tip_overlap = bool(slip_lower <= tip_max)
+        within_maneuverable_angle = bool(beta <= beta_max)
+        if slip_tip_overlap:
+            if within_maneuverable_angle:
+                target = 0.5 * (tip_max + slip_lower)
+            else:
+                target = weight_n * sin_alpha * float(np.cos(beta))
+        else:
+            target = tip_max
+
+        if not np.isfinite(target):
+            return previous_target
+        return float(
+            np.clip(
+                target,
+                MIN_TETHER_FORCE_N,
+                MAX_TETHER_FORCE_N,
+            )
+        )
+
     def run(self):
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot run control loop")
@@ -765,6 +964,34 @@ class Controller:
         vel = self.imu.get_linear_velocity()
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
+
+        # Geometry control depends only on the gravity direction, not on the
+        # IMU velocity or acceleration channels used elsewhere in the policy
+        # observation.  Validate it independently so an unrelated bad channel
+        # does not freeze an otherwise well-defined Polzin target.
+        polzin_gravity_body = np.zeros(3, dtype=np.float64)
+        gravity_valid = False
+        # get_gravity_acceleration() also exposes its initialized cache before
+        # the first AHRS packet, so require a valid combined snapshot and a
+        # still-running serial reader as well.
+        if (
+            grav is not None
+            and imu_data is not None
+            and bool(self.imu.running)
+        ):
+            try:
+                gravity_sample = np.asarray(grav, dtype=np.float64)
+            except (TypeError, ValueError):
+                gravity_sample = np.zeros(3, dtype=np.float64)
+            gravity_norm = (
+                float(np.linalg.norm(gravity_sample))
+                if gravity_sample.shape == (3,)
+                and np.all(np.isfinite(gravity_sample))
+                else 0.0
+            )
+            if gravity_norm > 1e-6:
+                polzin_gravity_body = gravity_sample / gravity_norm
+                gravity_valid = True
 
         tension_value = self.tension_sensor.get_cable_tension()
         tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
@@ -828,7 +1055,9 @@ class Controller:
         self.obs[9:27] = qj_obs * self.dof_pos_scale
         self.obs[27:45] = dqj_obs * self.dof_vel_scale
         self.obs[45:63] = self.action
-        self.obs[63] = np.float32(0.9)
+        # Match training: the 19th previous-applied-control observation is the
+        # deterministic cable ctrl from the preceding control cycle.
+        self.obs[63] = np.float32(self._previous_tether_ctrl)
 
         # Command is stored in obs with scaling (match sim2sim layout).
         # Avoid printing at control rate (50Hz) since it can disturb timing.
@@ -846,14 +1075,23 @@ class Controller:
         # Break the storage alias before NumPy performs in-place clipping.
         self.action = action_tensor.detach().cpu().numpy().squeeze().copy()
 
-        # Action clipping: joint actions limited to [-2, 2], cable action limited to [0, 1]
+        if self.action.shape != (18,):
+            raise ValueError(
+                "Polzin comparison policy must output exactly 18 leg actions, "
+                f"got shape {self.action.shape}"
+            )
+
+        # The policy controls only the 18 leg joints.  The deterministic
+        # Polzin--Hughes controller, not the policy, supplies the cable target.
         self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
-        #self.action[18] = np.clip(self.action[18], 0.0, 2.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
         
-        target_tension = self.action[18] * self.config.tension_action_scale
+        target_tension = self._compute_polzin_tension(
+            gravity_body=polzin_gravity_body,
+            gravity_valid=gravity_valid,
+        )
 
         for i in range(18):
             q = target_dof_pos[i]
@@ -898,20 +1136,11 @@ class Controller:
             #print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
             
 
-        # Spool speed command from reference/actual tension alignment.
-        # `speed_input` is a user-chosen scalar (here: commanded forward speed from gamepad).
-        # Paper-style: feedforward uses IMU speed (already read above).
-        # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
-        spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
-            speed_input=float(cmd[0]),
-            #speed_input=float(linvel[0]),
-            yaw=float(yaw_differ_value),
-            tension_ref=float(target_tension),
-            tension_meas=float(tension_value),
-        )
-
-        # change!!! nm = 180 * 0.073
-        spool_torque_cmd = 13.14
+        # Use the same direct feedforward conversion as the constant-force
+        # baseline: tau = T * r.  No tension-feedback/PID term is added to this
+        # deterministic literature comparison.
+        spool_radius_m = float(self.config.tsc_ff_radius_m)
+        spool_torque_cmd = float(target_tension * spool_radius_m)
 
         self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
@@ -919,7 +1148,8 @@ class Controller:
 
         # Write after u_k has been computed, while retaining the pre-action
         # observation and the distinct u_{k-1}.
-        torque_limit = float(self.config.tsc_torque_limit)
+        # With the configured r=0.073 m, 400 N corresponds to 29.2 Nm.
+        torque_limit = MAX_TETHER_FORCE_N * spool_radius_m
         saturation_flag = abs(float(spool_torque_cmd)) >= max(torque_limit - 1e-6, 0.0)
         self.pre_tension_logger.write(
             timestamp_ns=observation_timestamp_ns,
@@ -948,6 +1178,10 @@ class Controller:
             emergency_flag=False,
         )
         self._previous_spool_torque_command_nm = float(spool_torque_cmd)
+        self._tether_force_target_n = float(target_tension)
+        self._previous_tether_ctrl = float(
+            target_tension / SIM_CABLE_FORCE_PER_CTRL_N
+        )
         compute_time_ns = time.monotonic_ns() - observation_timestamp_ns
         self._max_compute_time_ns = max(self._max_compute_time_ns, compute_time_ns)
         if compute_time_ns > self._control_period_ns:
