@@ -4,13 +4,7 @@
 
 > 安全提示：本工程会向实机电机下发位置、速度或力矩指令。运行前必须架起机器人、确认电机映射/方向/零位、传感器和手柄按键，并确保 LB 阻尼退出可用。不要在电机未卸载或人员位于机器人运动范围内时直接运行。
 
-## 1. 当前主要入口
-
-| 场景 | 主脚本 | 配置 | 说明 |
-| --- | --- | --- | --- |
-| 纯六足 | `deploy/deploy_real/deploy_real_hexapod.py` | `configs/hexapod.yaml` | 当前纯六足实机策略入口，18 个关节，包含 IMU、手柄、电机 CSV 日志和阻尼退出。 |
-| 绳驱六足（速度式绳轮） | `deploy_real_hexapod_tethered.py` | `configs/hexapod_tethered.yaml` | 18 个腿关节加 1 个绳轮电机，策略输出目标张力，张力控制器生成绳轮转速。 |
-| 绳驱六足（力矩式绳轮） | `deploy_real_hexapod_tethered_plot_torque.py` | `configs/hexapod_tethered.yaml` | 使用绳轮力矩控制，并实时绘制张力、绳方向和绳轮指令。 |
+## 1. 控制流程
 
 纯六足入口的基本状态机是：
 
