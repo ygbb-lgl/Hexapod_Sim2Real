@@ -20,6 +20,7 @@ class Config:
             self.lin_vel = config["lin_vel_scale"]
 
             self.joint2motor_idx = config["joint2motor_idx"]
+            self.motor_directions = np.array(config["motor_directions"], dtype=np.float32)
 
             self.policy_path = config["policy_path"].replace("{ROOT_DIR}", ROOT_DIR)
 
@@ -29,4 +30,4 @@ class Config:
             self.action_scale = config["action_scale"]
 
             self.num_actions = config["num_actions"]
-            self.num_obs = config["num_obs"] 
+            self.num_obs = config["num_obs"]

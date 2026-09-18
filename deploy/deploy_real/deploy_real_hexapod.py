@@ -82,7 +82,7 @@ class Controller:
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
 
-        self.imu = IMUSDK(port='/dev/ttyUSB1', baudrate=921600)
+        self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
@@ -116,14 +116,14 @@ class Controller:
         for policy_idx in range(18):
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
-                kp[policy_idx] = 55.0
-                kd[policy_idx] = 0.45
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group2:
-                kp[policy_idx] = 75.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             elif motor_id in group3:
-                kp[policy_idx] = 70.0
-                kd[policy_idx] = 0.55
+                kp[policy_idx] = 100.0
+                kd[policy_idx] = 1.2
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -165,6 +165,9 @@ class Controller:
             init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
 
         for i in range(num_step):
+            if self.gamepad.get_button_lb() == 1:
+                return False
+
             alpha = i / num_step
             
             for j in range(18):
@@ -178,13 +181,20 @@ class Controller:
 
             time.sleep(self.config.control_dt)
 
+        return True
+
     # 在默认位置等待，直到按下按钮A
     def default_pos_state(self):
         print("Enter default pos state.")
-        print("Waiting for the Button A signal...")
+        print("Waiting for Button A to start policy, or LB for damping...")
 
         #init_dof_pos = np.zeros(18, dtype=np.float32)
-        while self.gamepad.get_button_a() != 1:
+        while True:
+            if self.gamepad.get_button_lb() == 1:
+                return False
+            if self.gamepad.get_button_a() == 1:
+                return True
+
             for i in range(18):
                 default_pos = self.config.default_angles[i]
                 self.robot.motor_command_buffer.kp[i] = 150.0
@@ -206,14 +216,15 @@ class Controller:
 
     # 打印imu数据
     def print_imu_data(self):
-        vel = self.imu.get_linear_velocity()
-        grav = self.imu.get_gravity_acceleration()
-        if vel is not None and grav is not None:
-            for i in range(10):
-                print(f"Vel: [{vel[0]:6.3f}, {vel[1]:6.3f}, {vel[2]:6.3f}] | Grav: [{grav[0]:6.3f}, {grav[1]:6.3f}, {grav[2]:6.3f}]")
-                time.sleep(0.1)
-        else:
-            print("No IMU data available.")
+        for _ in range(10):
+            vel = self.imu.get_linear_velocity()
+            grav = self.imu.get_gravity_acceleration()
+            print(
+                f"Vel: [{vel[0]:+7.3f}, {vel[1]:+7.3f}, {vel[2]:+7.3f}] | "
+                f"Grav: [{grav[0]:+7.3f}, {grav[1]:+7.3f}, {grav[2]:+7.3f}]",
+                flush=True,
+            )
+            time.sleep(0.1)
 
 
     def run(self):
@@ -226,7 +237,7 @@ class Controller:
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
 
-        if imu_data is None:
+        if imu_data is None or vel is None or grav is None:
             # 如果没有 IMU 数据，使用全 0
             linvel = np.zeros(3, dtype=np.float32)
             ang_vel = np.zeros(3, dtype=np.float32)
@@ -271,14 +282,14 @@ class Controller:
         self.action = self.policy(obs_tensor).detach().numpy().squeeze()
 
         # action clip -1 1
-        self.action = np.clip(self.action, -1.0, 1.0)
+        self.action = np.clip(self.action, -10.0, 10.0)
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
 
         for i in range(18):
             q = target_dof_pos[i]
-            motor_id = int(self.config.joint2motor_idx[i])
+            # motor_id = int(self.config.joint2motor_idx[i])
             
             # Read actual motor position
             actual_pos = self.robot.motor_state_buffer.position[i]
@@ -286,15 +297,15 @@ class Controller:
 
             # Add feedforward torque for Group2 joints with correct sign
             # Sign depends on motor_direction to ensure torque assists motion
-            group2_motor_ids = {18, 9, 3, 15, 11, 6}
-            if motor_id in group2_motor_ids:
-                # Get motor direction (+1 or -1)
-                motor_dir = self.config.motor_directions[i]
-                # Apply feedforward in the direction that assists gravity compensation
-                # If motor_dir is -1, we need to flip the sign
-                feedforward_torque = 1.5 * motor_dir
-            else:
-                feedforward_torque = 0.0
+            # group2_motor_ids = {18, 9, 3, 15, 11, 6}
+            # if motor_id in group2_motor_ids:
+            #     # Get motor direction (+1 or -1)
+            #     motor_dir = self.config.motor_directions[i]
+            #     # Apply feedforward in the direction that assists gravity compensation
+            #     # If motor_dir is -1, we need to flip the sign
+            #     feedforward_torque = 1.5 * motor_dir
+            # else:
+            #     feedforward_torque = 0.0
 
             # Log to CSV
             self.log_writers[i].writerow([
@@ -310,7 +321,7 @@ class Controller:
             self.robot.motor_command_buffer.kd[i] = float(self._kd_policy[i])
             self.robot.motor_command_buffer.target_position[i] = q
             self.robot.motor_command_buffer.target_velocity[i] = 0.0
-            self.robot.motor_command_buffer.feedforward_torque[i] = feedforward_torque
+            self.robot.motor_command_buffer.feedforward_torque[i] = 0.0
 
 
             # motor_id 仅用于对照打印
@@ -341,24 +352,34 @@ if __name__ == "__main__":
     controller.print_imu_data()
 
     controller.zero_torque_state()
-    controller.move_to_default_pos()
-    controller.default_pos_state()
-    print("Start main control loop. Press LB to exit.")
+    enter_policy = controller.move_to_default_pos()
+    if enter_policy:
+        enter_policy = controller.default_pos_state()
 
-    while True:
-        try:
-            
-            controller.run()
-            if controller.gamepad.get_button_lb() == 1:
+    if enter_policy:
+        print("Start main control loop. Press LB to exit.")
+
+        while True:
+            try:
+                # 先处理安全按键，避免按下 LB/Y 后再多执行一次策略。
+                if controller.gamepad.get_button_lb() == 1:
+                    break
+
+                if controller.gamepad.get_button_y() == 1:
+                    if not controller.move_to_default_pos():
+                        break
+                    # 进入默认位置保持状态，A 恢复策略，LB 进入阻尼。
+                    if not controller.default_pos_state():
+                        break
+                    continue
+
+                controller.run()
+
+            except KeyboardInterrupt:
                 break
-
-            if controller.gamepad.get_button_y() == 1:
-                controller.move_to_default_pos()
-                # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
-                controller.default_pos_state()
-            
-        except KeyboardInterrupt:
-            break
+            except Exception as e:
+                print(f"[ERROR] Policy loop failed, entering damping mode: {e}")
+                break
 
 
     if getattr(controller, "gamepad", None) is not None:
