@@ -59,9 +59,11 @@ class Controller:
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
         self.counter = 0
 
-        # Create log directory with timestamp
+        # Save every run under a stable project-local log root instead of the
+        # shell's current working directory.
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.log_dir = os.path.join(os.getcwd(), f'motor_logs_{timestamp}')
+        log_root = os.path.join(config_hexapod.ROOT_DIR, 'motor_logs', 'hexapod')
+        self.log_dir = os.path.join(log_root, f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
         
         # Open 18 CSV files for logging motor data

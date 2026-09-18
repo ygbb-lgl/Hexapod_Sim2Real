@@ -710,6 +710,9 @@ class Controller:
             init_dof_pos[i] = self.robot.motor_state_buffer.position[i]
 
         for i in range(num_step):
+            if self.gamepad.get_button_lb() == 1:
+                return False
+
             alpha = i / num_step
             
             for j in range(18):
@@ -726,16 +729,23 @@ class Controller:
 
             time.sleep(self.config.control_dt)
 
-    # 在默认位置等待，直到按下按钮A
+        return True
+
+    # 在默认位置等待，直到按下按钮A，或按下LB进入阻尼
     def default_pos_state(self):
         print("Enter default pos state.")
-        print("Waiting for the Button A signal...")
+        print("Waiting for Button A to start policy, or LB for damping...")
 
         if self.gamepad is None:
             raise RuntimeError("Gamepad is not available; cannot enter default_pos_state")
 
         #init_dof_pos = np.zeros(18, dtype=np.float32)
-        while self.gamepad.get_button_a() != 1:
+        while True:
+            if self.gamepad.get_button_lb() == 1:
+                return False
+            if self.gamepad.get_button_a() == 1:
+                return True
+
             for i in range(18):
                 default_pos = self.config.default_angles[i]
                 self.robot.motor_command_buffer.kp[i] = 150.0
@@ -1218,13 +1228,34 @@ if __name__ == "__main__":
     controller.print_yaw_differ_angle()
 
     controller.zero_torque_state()
-    controller.move_to_default_pos()
-    controller.default_pos_state()
-    print("Start main control loop. Press LB to exit.")
+    enter_policy = controller.move_to_default_pos()
+    if enter_policy:
+        enter_policy = controller.default_pos_state()
 
-    while True:
+    if enter_policy:
+        print("Start main control loop. Press LB to exit.")
+
+    while enter_policy:
         try:
-            
+            # 先处理安全按键，避免按下 LB/Y 后再多执行一次策略。
+            if controller.gamepad.get_button_lb() == 1:
+                break
+
+            if controller.gamepad.get_button_y() == 1:
+                # Safety: stop spool speed motor immediately on Y.
+                create_zero_torque_cmd(controller.robot)
+                # Do not put the blocking default-position pause and the
+                # resumed policy loop in the same training trajectory.
+                controller.pre_tension_logger.close()
+                if not controller.move_to_default_pos():
+                    break
+                # 进入默认位置保持状态，A 恢复策略，LB 进入阻尼。
+                if not controller.default_pos_state():
+                    break
+                create_zero_torque_cmd(controller.robot)
+                controller.start_new_training_trajectory()
+                continue
+
             controller.run()
             if (
                 controller.timing_warning_message is not None
@@ -1235,20 +1266,6 @@ if __name__ == "__main__":
                 controller._timing_warning_reported_sequence = (
                     controller._timing_warning_sequence
                 )
-            if controller.gamepad.get_button_lb() == 1:
-                break
-
-            if controller.gamepad.get_button_y() == 1:
-                # Safety: stop spool speed motor immediately on Y.
-                create_zero_torque_cmd(controller.robot)
-                # Do not put the blocking default-position pause and the
-                # resumed policy loop in the same training trajectory.
-                controller.pre_tension_logger.close()
-                controller.move_to_default_pos()
-                # 进入默认位置保持状态，等待再次按下A键恢复策略，期间保持静止不受力掉落
-                controller.default_pos_state()
-                create_zero_torque_cmd(controller.robot)
-                controller.start_new_training_trajectory()
             
         except KeyboardInterrupt:
             break
