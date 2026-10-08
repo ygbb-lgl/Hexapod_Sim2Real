@@ -1,10 +1,12 @@
-"""Deployment-only recurrent MoE policy and 68-D observation contract.
+"""Deployment-only recurrent context policy and 68-D observation contract.
 
 This module intentionally has no dependency on RSL-RL, TensorDict, JAX, or
 MuJoCo.  The same file can therefore be used by sim2sim and copied into the
 real-robot project.  Only the deployable half of ``MoEActorCriticGRU`` is
-reconstructed: estimator GRU, actor GRU, shared gate, and six actor experts.
-Training-only oracle encoders and the critic are never evaluated here.
+reconstructed: estimator GRU, actor GRU, shared gate, and the configured actor
+experts.  The MoE policy uses six experts while its controlled Estimate
+ablation uses one.  Training-only oracle encoders and the critic are never
+evaluated here.
 """
 
 from __future__ import annotations
@@ -62,7 +64,7 @@ def build_deployable_state(
     cable_tension: float,
     tether_unit_direction_body: np.ndarray,
 ) -> np.ndarray:
-    """Build the exact 68-D MoE state used during training.
+    """Build the exact 68-D recurrent-policy state used during training.
 
     Layout:
       gyro(3), gravity(3), leg q error(18), leg qd(18),
@@ -93,7 +95,7 @@ def build_deployable_state(
     if state.shape != (STATE_DIM,):
         raise AssertionError(f"internal state layout error: {state.shape}")
     if not np.all(np.isfinite(state)):
-        raise ValueError("MoE state contains NaN or Inf")
+        raise ValueError("policy state contains NaN or Inf")
     return state
 
 
@@ -121,12 +123,12 @@ class _DenseNetwork(nn.Module):
 
 class _DenseMoE(nn.Module):
 
-    def __init__(self) -> None:
+    def __init__(self, num_experts: int) -> None:
         super().__init__()
         self.experts = nn.ModuleList(
             [
                 _DenseNetwork(HIDDEN_DIM, ACTION_DIM, (256, 128, 128))
-                for _ in range(NUM_EXPERTS)
+                for _ in range(num_experts)
             ]
         )
 
@@ -154,11 +156,21 @@ class _FrozenNormalizer(nn.Module):
 class MoEInferenceCore(nn.Module):
     """Stateless recurrent core with explicit estimator/actor GRU states."""
 
-    def __init__(self, gate_temperature: float = 1.0) -> None:
+    def __init__(
+        self,
+        gate_temperature: float = 1.0,
+        num_experts: int = NUM_EXPERTS,
+    ) -> None:
         super().__init__()
         if gate_temperature <= 0.0:
             raise ValueError("gate_temperature must be positive")
+        if num_experts not in (1, NUM_EXPERTS):
+            raise ValueError(
+                "Deployment supports the controlled 1- or 6-expert "
+                f"architectures, got {num_experts}."
+            )
         self.gate_temperature = float(gate_temperature)
+        self.num_experts = int(num_experts)
 
         self.estimator_gru = nn.GRU(STATE_DIM, HIDDEN_DIM, RNN_NUM_LAYERS)
         self.actor_gru = nn.GRU(
@@ -170,8 +182,8 @@ class MoEInferenceCore(nn.Module):
         self.contact_latent_estimator = _DenseNetwork(
             HIDDEN_DIM, CONTACT_LATENT_DIM, (256, 128)
         )
-        self.shared_gate = _DenseNetwork(HIDDEN_DIM, NUM_EXPERTS, (128,))
-        self.actor = _DenseMoE()
+        self.shared_gate = _DenseNetwork(HIDDEN_DIM, self.num_experts, (128,))
+        self.actor = _DenseMoE(self.num_experts)
         self.actor_obs_normalizer = _FrozenNormalizer(STATE_DIM)
         self.estimator_input_normalizer = _FrozenNormalizer(STATE_DIM)
 
@@ -247,8 +259,9 @@ def load_inference_core(
     checkpoint_path: str | Path,
     *,
     device: str | torch.device = "cpu",
+    num_experts: int = NUM_EXPERTS,
 ) -> MoEInferenceCore:
-    """Reconstruct the deployable core from a raw RSL-RL MoE checkpoint."""
+    """Reconstruct the deployable core from a raw RSL-RL checkpoint."""
     map_location = torch.device(device)
     try:
         checkpoint = torch.load(
@@ -258,7 +271,7 @@ def load_inference_core(
         checkpoint = torch.load(str(checkpoint_path), map_location=map_location)
     state_dict = _extract_state_dict(checkpoint)
 
-    core = MoEInferenceCore()
+    core = MoEInferenceCore(num_experts=num_experts)
     expected = core.state_dict()
     required: dict[str, torch.Tensor] = {}
     missing: list[str] = []
@@ -281,8 +294,8 @@ def load_inference_core(
         if mismatched:
             details.append(f"shape_mismatch={mismatched}")
         raise RuntimeError(
-            "Checkpoint does not match the configured 68-D/6-expert MoE "
-            "architecture: " + "; ".join(details)
+            f"Checkpoint does not match the configured 68-D/{num_experts}-"
+            "expert recurrent architecture: " + "; ".join(details)
         )
 
     core.load_state_dict(required, strict=True)
@@ -310,8 +323,15 @@ class StatefulMoEPolicy:
         core: nn.Module,
         *,
         device: str | torch.device = "cpu",
+        num_experts: int = NUM_EXPERTS,
     ) -> None:
+        if num_experts not in (1, NUM_EXPERTS):
+            raise ValueError(
+                "Deployment supports the controlled 1- or 6-expert "
+                f"architectures, got {num_experts}."
+            )
         self.device = torch.device(device)
+        self.num_experts = int(num_experts)
         self.core = core.to(self.device).eval()
         self.estimator_hidden = torch.zeros(
             RNN_NUM_LAYERS, 1, HIDDEN_DIM, device=self.device
@@ -320,19 +340,23 @@ class StatefulMoEPolicy:
             RNN_NUM_LAYERS, 1, HIDDEN_DIM, device=self.device
         )
         self.last_context = np.zeros(CONTEXT_DIM, dtype=np.float32)
-        self.last_gate = np.full(NUM_EXPERTS, 1.0 / NUM_EXPERTS, dtype=np.float32)
+        self.last_gate = np.full(
+            self.num_experts,
+            1.0 / self.num_experts,
+            dtype=np.float32,
+        )
 
     def reset(self) -> None:
         self.estimator_hidden.zero_()
         self.actor_hidden.zero_()
         self.last_context.fill(0.0)
-        self.last_gate.fill(1.0 / NUM_EXPERTS)
+        self.last_gate.fill(1.0 / self.num_experts)
 
     def __call__(self, state: np.ndarray) -> np.ndarray:
         state_array = np.asarray(state, dtype=np.float32).reshape(-1)
         if state_array.shape != (STATE_DIM,):
             raise ValueError(
-                f"MoE policy expects {STATE_DIM} values, got {state_array.shape}"
+                f"policy expects {STATE_DIM} values, got {state_array.shape}"
             )
         state_tensor = torch.from_numpy(state_array).unsqueeze(0).to(self.device)
         with torch.no_grad():
@@ -341,7 +365,7 @@ class StatefulMoEPolicy:
             )
         if not isinstance(output, (tuple, list)) or len(output) != 5:
             raise RuntimeError(
-                "Recurrent MoE TorchScript must return "
+                "Recurrent TorchScript must return "
                 "(action, estimator_hidden, actor_hidden, context, gate)."
             )
         action, estimator_hidden, actor_hidden, context, gate = output
@@ -349,9 +373,14 @@ class StatefulMoEPolicy:
         self.actor_hidden = actor_hidden.detach()
         self.last_context = context[0].detach().cpu().numpy().astype(np.float32)
         self.last_gate = gate[0].detach().cpu().numpy().astype(np.float32)
+        if self.last_gate.shape != (self.num_experts,):
+            raise RuntimeError(
+                f"policy returned {self.last_gate.shape} gate weights; "
+                f"expected ({self.num_experts},)"
+            )
         result = action[0].detach().cpu().numpy().astype(np.float32)
         if result.shape != (ACTION_DIM,) or not np.all(np.isfinite(result)):
-            raise RuntimeError(f"invalid MoE action: shape={result.shape}")
+            raise RuntimeError(f"invalid policy action: shape={result.shape}")
         return result
 
 
@@ -359,19 +388,34 @@ def load_moe_policy(
     policy_path: str | Path,
     *,
     device: str | torch.device = "cpu",
+    num_experts: int = NUM_EXPERTS,
 ) -> StatefulMoEPolicy:
-    """Load either a raw RSL-RL checkpoint or exported recurrent TorchScript."""
+    """Load a raw RSL-RL checkpoint or exported recurrent TorchScript."""
     path = Path(policy_path).expanduser().resolve()
     if not path.is_file():
-        raise FileNotFoundError(f"MoE policy does not exist: {path}")
+        raise FileNotFoundError(f"policy checkpoint does not exist: {path}")
     map_location = torch.device(device)
     try:
         core: nn.Module = torch.jit.load(str(path), map_location=map_location)
-        print(f"[MoE] loaded recurrent TorchScript: {path}")
+        print(
+            f"[policy] loaded {num_experts}-expert recurrent TorchScript: "
+            f"{path}"
+        )
     except (RuntimeError, ValueError):
-        core = load_inference_core(path, device=map_location)
-        print(f"[MoE] loaded raw RSL-RL checkpoint: {path}")
-    policy = StatefulMoEPolicy(core, device=map_location)
+        core = load_inference_core(
+            path,
+            device=map_location,
+            num_experts=num_experts,
+        )
+        print(
+            f"[policy] loaded {num_experts}-expert raw RSL-RL checkpoint: "
+            f"{path}"
+        )
+    policy = StatefulMoEPolicy(
+        core,
+        device=map_location,
+        num_experts=num_experts,
+    )
     # A real forward call validates the TorchScript signature and all shapes.
     policy(np.zeros(STATE_DIM, dtype=np.float32))
     policy.reset()

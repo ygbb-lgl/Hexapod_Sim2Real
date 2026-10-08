@@ -67,6 +67,7 @@
 | 脚本 | 作用 |
 | --- | --- |
 | `convert_checkpoint_to_jit.py` | 从 RSL-RL checkpoint 重建 actor/观测归一化器，导出实机用 TorchScript policy。脚本内含固定输入/输出路径，使用前需检查。 |
+| `convert_moe_checkpoint_to_jit.py` | 将 68 维双 GRU、6-expert MoE checkpoint 导出为实机部署用 recurrent TorchScript，并逐帧校验全部输出；输入和输出路径在脚本顶部配置，运行时无需传参。 |
 | `check_keys.py` | 打印 PyTorch checkpoint 的 key，检查 actor 和 observation normalizer 是否存在。当前模型路径在脚本内硬编码。 |
 | `test_load_model.py` | 加载/检查部署模型的小型测试脚本。 |
 | `plot_motor_curves.py` | 读取 `motor_logs_*` 中的 18 个电机 CSV，按 HAA/HFE/KFE 绘制目标位置和实际位置曲线。 |
@@ -213,3 +214,6 @@ sudo /home/hexapod/anaconda3/envs/hexapod_lgl/bin/python /home/hexapod/Hexapod_S
 ```
 
 #### deploy/deploy_real/deploy_real_hexapod_tethered_plot.py 和 /home/lgl/Hexapod_Sim2Real/deploy/deploy_real/deploy_real_hexapod_tethered_speed.py未必可以
+
+  pkill -TERM -x AskLink
+  /opt/AskLink/AskLink
