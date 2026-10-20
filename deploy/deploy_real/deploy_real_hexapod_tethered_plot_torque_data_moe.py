@@ -34,6 +34,10 @@ import config_hexapod_tethered
 
 from config_hexapod_tethered_moe import MoEConfig
 
+# Closed-loop recurrent soft start.  Set to 0.0 for a direct cold-start A/B
+# comparison.  Both GRUs still consume real observations throughout the ramp.
+POLICY_SOFT_START_DURATION_S = 0.5
+
 # 记录数据
 class TensionTrainingCsvLogger:
     """Write causally indexed rows consumed by ``pre_tension.py``.
@@ -399,6 +403,17 @@ class Controller:
         self._last_tether_yaw = 0.0
         self._last_tether_pitch = 0.0
         self.counter = 0
+        self._soft_start_steps = max(
+            0,
+            int(round(POLICY_SOFT_START_DURATION_S / float(config.control_dt))),
+        )
+        self._soft_start_step = 0
+        if self._soft_start_steps > 0:
+            print(
+                "[MoE] recurrent soft start: "
+                f"{POLICY_SOFT_START_DURATION_S:.3f}s "
+                f"({self._soft_start_steps} control frames)"
+            )
         # Schedule observation start times, rather than sleeping at the end of
         # run().  End-of-cycle sleeping does not account for work performed by
         # the outer button/state loop and produced ~22 ms periods for a 20 ms
@@ -611,6 +626,7 @@ class Controller:
         self._timing_warning_reported_sequence = 0
         self.action.fill(0.0)
         self.policy.reset()
+        self._soft_start_step = 0
         print(f"[PreTensionCSV] new trajectory after pause: {self.trajectory_id}")
 
     def _build_policy_joint_gains(self):
@@ -936,6 +952,18 @@ class Controller:
             -self.config.policy_action_clip,
             self.config.policy_action_clip,
         )
+
+        # Advance the recurrent policy with real sensor observations while the
+        # action actually sent to the robot rises smoothly from zero.  Because
+        # self.action stores the blended action, the next observation's
+        # previous_action exactly matches what was executed this frame.
+        if (
+            self._soft_start_steps > 0
+            and self._soft_start_step < self._soft_start_steps
+        ):
+            soft_start_alpha = self._soft_start_step / self._soft_start_steps
+            self.action *= np.float32(soft_start_alpha)
+            self._soft_start_step += 1
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
