@@ -1,0 +1,98 @@
+DETA40 guided motion test
+Frame: FLU (x forward, y left, z up)
+No external ground truth: assessments concern sign/axis/ZUPT only.
+
+[calibration] 自动启动标定 / attempt 1 / completed
+  static accel_norm_rms=0.00996 m/s^2 gyro_norm_rms=0.001436 rad/s velocity_norm_max=0.00000 m/s
+  duration=1.50s samples=151 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=0
+  gravity_change_final=0.002deg max=0.004deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 325, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[static_start] 起始静止基线 / attempt 1 / completed
+  static accel_norm_rms=0.01999 m/s^2 gyro_norm_rms=0.002059 rad/s velocity_norm_max=0.00251 m/s
+  duration=12.39s samples=1240 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=1
+  gravity_change_final=0.031deg max=0.031deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 2778, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[x_forward] X 正方向平移（前移） / attempt 1 / completed
+  direction=consistent correct_peak=0.35763 m/s wrong_peak=0.00000 m/s cross_peak=0.03693 m/s
+  imu_only_projected_displacement_estimate=0.2848 m (no external ground truth)
+  duration=5.65s samples=566 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=4
+  gravity_change_final=0.189deg max=0.252deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1280, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[x_backward] X 负方向平移（后移） / attempt 1 / completed
+  direction=consistent correct_peak=0.78060 m/s wrong_peak=0.00801 m/s cross_peak=0.14342 m/s
+  imu_only_projected_displacement_estimate=0.3508 m (no external ground truth)
+  duration=4.89s samples=490 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=2
+  gravity_change_final=0.278deg max=0.285deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1103, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[y_left] Y 正方向平移（左移） / attempt 1 / completed
+  direction=consistent correct_peak=0.62154 m/s wrong_peak=0.00115 m/s cross_peak=0.07009 m/s
+  imu_only_projected_displacement_estimate=0.4241 m (no external ground truth)
+  duration=5.26s samples=527 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=4
+  gravity_change_final=0.295deg max=0.375deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1177, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[y_right] Y 负方向平移（右移） / attempt 1 / completed
+  direction=consistent correct_peak=0.62044 m/s wrong_peak=0.00000 m/s cross_peak=0.05152 m/s
+  imu_only_projected_displacement_estimate=0.4461 m (no external ground truth)
+  duration=4.24s samples=425 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=1
+  gravity_change_final=0.228deg max=0.949deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 948, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[z_up] Z 正方向平移（上移） / attempt 1 / completed
+  direction=consistent correct_peak=0.53615 m/s wrong_peak=0.10272 m/s cross_peak=0.10599 m/s
+  imu_only_projected_displacement_estimate=0.3876 m (no external ground truth)
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=5.91s samples=592 observed_rate=100.0Hz missed=0 final_v_norm=0.081652m/s final_stationary=False zupt_delta=0
+  gravity_change_final=13.909deg max=22.499deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1331, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[z_down] Z 负方向平移（下移） / attempt 1 / completed
+  direction=consistent correct_peak=0.76061 m/s wrong_peak=0.00000 m/s cross_peak=0.26646 m/s
+  imu_only_projected_displacement_estimate=1.0694 m (no external ground truth)
+  duration=7.62s samples=763 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=1
+  gravity_change_final=9.485deg max=12.093deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1724, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[yaw_left] 绕 Z 正方向旋转（左转） / attempt 1 / completed
+  direction=consistent correct_peak=2.51024 rad/s wrong_peak=0.38540 rad/s cross_peak=0.04978 rad/s
+  integrated_target=175.66 deg heading_change=176.05 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=9.07s samples=908 observed_rate=100.0Hz missed=0 final_v_norm=0.011537m/s final_stationary=False zupt_delta=5
+  gravity_change_final=0.540deg max=0.754deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 2039, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[yaw_right] 绕 Z 负方向旋转（右转） / attempt 1 / completed
+  direction=consistent correct_peak=3.74280 rad/s wrong_peak=0.64798 rad/s cross_peak=0.14445 rad/s
+  integrated_target=179.48 deg heading_change=-179.21 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=8.27s samples=828 observed_rate=100.0Hz missed=0 final_v_norm=0.000640m/s final_stationary=False zupt_delta=6
+  gravity_change_final=0.438deg max=0.572deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1854, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[roll_positive] 绕 X 正方向旋转 / attempt 1 / completed
+  direction=consistent correct_peak=3.08299 rad/s wrong_peak=0.73216 rad/s cross_peak=1.57645 rad/s
+  integrated_target=130.19 deg heading_change=8.67 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=6.85s samples=686 observed_rate=100.0Hz missed=0 final_v_norm=0.396715m/s final_stationary=False zupt_delta=0
+  gravity_change_final=128.108deg max=135.905deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1545, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[roll_negative] 绕 X 负方向旋转 / attempt 1 / completed
+  direction=consistent correct_peak=1.74209 rad/s wrong_peak=0.22502 rad/s cross_peak=0.26664 rad/s
+  integrated_target=121.95 deg heading_change=-7.12 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=6.69s samples=670 observed_rate=100.0Hz missed=0 final_v_norm=0.705597m/s final_stationary=False zupt_delta=0
+  gravity_change_final=121.073deg max=122.604deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1513, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[pitch_positive] 绕 Y 正方向旋转 / attempt 1 / completed
+  direction=consistent correct_peak=0.85889 rad/s wrong_peak=0.19334 rad/s cross_peak=0.46937 rad/s
+  integrated_target=28.76 deg heading_change=7.67 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=6.44s samples=645 observed_rate=100.0Hz missed=0 final_v_norm=0.936036m/s final_stationary=False zupt_delta=0
+  gravity_change_final=28.161deg max=32.892deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1463, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[pitch_negative] 绕 Y 负方向旋转 / attempt 1 / completed
+  direction=consistent correct_peak=0.74884 rad/s wrong_peak=0.14382 rad/s cross_peak=0.48985 rad/s
+  integrated_target=26.51 deg heading_change=-6.25 deg
+  final_assessment=invalid_or_incomplete reasons=['not_stationary_at_end']
+  duration=5.77s samples=578 observed_rate=100.0Hz missed=0 final_v_norm=1.147381m/s final_stationary=False zupt_delta=0
+  gravity_change_final=27.186deg max=32.447deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 1279, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+
+[static_end] 结束静止基线 / attempt 1 / completed
+  static accel_norm_rms=0.03008 m/s^2 gyro_norm_rms=0.019588 rad/s velocity_norm_max=0.00954 m/s
+  duration=15.79s samples=1580 observed_rate=100.0Hz missed=0 final_v_norm=0.000000m/s final_stationary=True zupt_delta=1
+  gravity_change_final=0.042deg max=0.063deg counters={'serial_error_count': 0, 'parse_error_count': 0, 'frame_error_count': 0, 'discarded_byte_count': 3558, 'imu_gap_over_timeout_count': 0, 'ahrs_gap_over_timeout_count': 0, 'velocity_dt_reject_count': 0, 'timestamp_stall_count': 0}
+

@@ -1,0 +1,2920 @@
+{
+  "script": "test_guided_motion.py",
+  "script_version": "1.0",
+  "session_id": "deta40_20261020_105001",
+  "session_status": "completed",
+  "started_at": "2026-10-20T10:50:01+0800",
+  "ended_at": "2026-10-20T10:53:28+0800",
+  "port": "/dev/ttyUSB0",
+  "baudrate": 921600,
+  "output_frame": "FLU: x forward, y left, z up",
+  "selected_stages": [
+    "static_start",
+    "x_forward",
+    "x_backward",
+    "y_left",
+    "y_right",
+    "z_up",
+    "z_down",
+    "yaw_left",
+    "yaw_right",
+    "roll_positive",
+    "roll_negative",
+    "pitch_positive",
+    "pitch_negative",
+    "static_end"
+  ],
+  "files": {
+    "samples_csv": "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/imu_sdk_new/test_logs/deta40_20261020_105001/samples.csv",
+    "report_txt": "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/imu_sdk_new/test_logs/deta40_20261020_105001/report.txt"
+  },
+  "limitations": [
+    "No external position or velocity ground truth is available.",
+    "Results validate direction/axis response and ZUPT, not absolute velocity accuracy.",
+    "The SDK exposes latest samples, not a queue; missed snapshots are estimated.",
+    "Vendor demo does not define CRC algorithms, quaternion convention, or environmental units.",
+    "discarded_byte_count includes expected unconsumed frame delimiters; it is not by itself a communication error."
+  ],
+  "calibration": {
+    "summary": {
+      "stage_index": 0,
+      "stage_name": "calibration",
+      "stage_title": "自动启动标定",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "保持完全静止",
+      "expected_kind": "static",
+      "expected_axis": null,
+      "expected_sign": 0,
+      "sample_count": 151,
+      "duration_s": 1.4999145980000321,
+      "observed_sample_rate_hz": 100.0056937908386,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 0.33774834437086093,
+      "stationary_fraction": 0.33774834437086093,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.0,
+            "max": 0.0,
+            "peak_abs": 0.0,
+            "rms": 0.0
+          },
+          "y": {
+            "min": 0.0,
+            "max": 0.0,
+            "peak_abs": 0.0,
+            "rms": 0.0
+          },
+          "z": {
+            "min": 0.0,
+            "max": 0.0,
+            "peak_abs": 0.0,
+            "rms": 0.0
+          }
+        },
+        "norm_rms": 0.0,
+        "norm_p95": 0.0,
+        "norm_max": 0.0,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.015098617717331099,
+            "max": 0.022674905623290047,
+            "peak_abs": 0.022674905623290047,
+            "rms": 0.004401033157799002
+          },
+          "y": {
+            "min": -0.03531784366944957,
+            "max": 0.026059281552160807,
+            "peak_abs": 0.03531784366944957,
+            "rms": 0.0072327332793973055
+          },
+          "z": {
+            "min": -0.01835602347830978,
+            "max": 0.024386178648786228,
+            "peak_abs": 0.024386178648786228,
+            "rms": 0.005251813848457598
+          }
+        },
+        "norm_rms": 0.009963085478193917,
+        "norm_p95": 0.023960080114208762,
+        "norm_max": 0.03559988965669276,
+        "final": [
+          -0.004404773143013678,
+          -0.03531784366944957,
+          -0.0007746196922404636
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.0003662465314846486,
+            "max": 0.0020678737200796604,
+            "peak_abs": 0.0020678737200796604,
+            "rms": 0.0007454999824363272
+          },
+          "y": {
+            "min": -0.0003322362608741969,
+            "max": 0.0021326991263777018,
+            "peak_abs": 0.0021326991263777018,
+            "rms": 0.0007054903241649048
+          },
+          "z": {
+            "min": -0.0003053951950278133,
+            "max": 0.0066958884708583355,
+            "peak_abs": 0.0066958884708583355,
+            "rms": 0.0010046115608702783
+          }
+        },
+        "norm_rms": 0.0014362211562071786,
+        "norm_p95": 0.0021619053729090175,
+        "norm_max": 0.006982485146188149,
+        "final": [
+          -1.615374640095979e-05,
+          0.00017953282804228365,
+          -7.874325092416257e-06
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.0036594255177250746,
+            "max": 0.003769870998279482,
+            "peak_abs": 0.003769870998279482,
+            "rms": 0.003690300262848795
+          },
+          "y": {
+            "min": 0.01848612018781364,
+            "max": 0.018584063269534896,
+            "peak_abs": 0.018584063269534896,
+            "rms": 0.018543636129161885
+          },
+          "z": {
+            "min": -0.9998223220845213,
+            "max": -0.9998205247960608,
+            "peak_abs": 0.9998223220845213,
+            "rms": 0.999821241644265
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.003737629303564438,
+          0.01850866554589765,
+          -0.9998217138204687
+        ]
+      },
+      "gravity_final_change_deg": 0.002213675532189154,
+      "gravity_max_change_deg": 0.0041860526238348275,
+      "heading_unwrapped_change_deg": 0.0014040307612607462,
+      "zupt_count_delta": 0,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 1.4999145980000321,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 325,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "assessment": "observed",
+      "provisional_assessment": "observed",
+      "validity_reasons": []
+    },
+    "final_diagnostics": {
+      "running": true,
+      "stop_requested": false,
+      "port": "/dev/ttyUSB0",
+      "baudrate": 921600,
+      "data_timeout_s": 0.1,
+      "output_frame": "FLU (x forward, y left, z up)",
+      "strict_policy_health": true,
+      "last_error": null,
+      "serial_error_count": 0,
+      "parse_error_count": 0,
+      "frame_error_count": 0,
+      "discarded_byte_count": 327,
+      "ground_candidate_count": 1,
+      "unsupported_packet_count": 0,
+      "imu_packet_count": 151,
+      "ahrs_packet_count": 151,
+      "insgps_packet_count": 0,
+      "geodetic_packet_count": 0,
+      "system_state_packet_count": 0,
+      "ground_packet_count": 0,
+      "imu_fresh": true,
+      "ahrs_fresh": true,
+      "insgps_fresh": false,
+      "policy_data_ready": true,
+      "velocity_available": true,
+      "velocity_source": "integrated_imu",
+      "velocity_world": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "linear_velocity_body": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "linear_acceleration": [
+        -0.004404773143013678,
+        -0.03531784366944957,
+        -0.0007746196922404636
+      ],
+      "linear_acceleration_body": [
+        -0.004404773143013678,
+        -0.03531784366944957,
+        -0.0007746196922404636
+      ],
+      "linear_acceleration_world": [
+        -0.0051129823826134325,
+        -0.03523064957608365,
+        -0.00010433202279992206
+      ],
+      "calibrated": true,
+      "velocity_valid": true,
+      "stationary": true,
+      "stationary_elapsed_s": 1.4999145980000321,
+      "calibration_sample_count": 101,
+      "accelerometer_rest_sign": -1,
+      "accel_bias_flu": [
+        -0.008787795048927483,
+        0.0005888105690307883,
+        0.008730539181312624
+      ],
+      "gyro_bias_flu": [
+        0.0005923517076166043,
+        0.0005661862797021986,
+        9.110509732762343e-06
+      ],
+      "velocity_dt_s": 0.010034,
+      "velocity_host_dt_s": 0.009997956999541202,
+      "velocity_dt_source": "vendor_timestamp_word0_us",
+      "velocity_dt_reject_count": 0,
+      "imu_timestamp_us": 1637376806,
+      "timestamp_stall_count": 0,
+      "timestamp_stall_consecutive": 0,
+      "timestamp_stall_limit": 3,
+      "zupt_count": 0,
+      "velocity_estimator_error": null,
+      "gravity_available": true,
+      "crc_validation_supported": false,
+      "crc_error_count": 0,
+      "crc_note": "vendor demo supplies no CRC algorithms/coverage",
+      "last_headers": {
+        "65": {
+          "type": 65,
+          "length": 48,
+          "sequence": 176,
+          "crc8": 230,
+          "crc16_high": 229,
+          "crc16_low": 189
+        },
+        "64": {
+          "type": 64,
+          "length": 56,
+          "sequence": 177,
+          "crc8": 101,
+          "crc16_high": 6,
+          "crc16_low": 85
+        }
+      },
+      "imu_age_s": 0.0058596210001269355,
+      "ahrs_age_s": 0.007044947999929718,
+      "insgps_age_s": null,
+      "geodetic_age_s": null,
+      "imu_last_interarrival_s": 0.009997956999541202,
+      "imu_max_interarrival_s": 0.010313440000572882,
+      "imu_gap_over_timeout_count": 0,
+      "ahrs_last_interarrival_s": 0.010070979000374791,
+      "ahrs_max_interarrival_s": 0.010262056000101438,
+      "ahrs_gap_over_timeout_count": 0,
+      "insgps_last_interarrival_s": null,
+      "insgps_max_interarrival_s": null,
+      "insgps_gap_over_timeout_count": 0
+    }
+  },
+  "attempts": [
+    {
+      "stage_index": 1,
+      "stage_name": "static_start",
+      "stage_title": "起始静止基线",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，放在稳定支撑面上完全不动至少 5 秒，然后按 n。",
+      "expected_kind": "static",
+      "expected_axis": null,
+      "expected_sign": 0,
+      "sample_count": 1240,
+      "duration_s": 12.389994668000327,
+      "observed_sample_rate_hz": 100.00004303472129,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.9774193548387097,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.000121885258849464,
+            "max": 0.001257322205998133,
+            "peak_abs": 0.001257322205998133,
+            "rms": 0.00012229633043348465
+          },
+          "y": {
+            "min": -0.0016067943773817792,
+            "max": 0.0010356341780446425,
+            "peak_abs": 0.0016067943773817792,
+            "rms": 0.00016697931990993374
+          },
+          "z": {
+            "min": -0.0014625817290394945,
+            "max": 0.0,
+            "peak_abs": 0.0014625817290394945,
+            "rms": 0.00011794157369182438
+          }
+        },
+        "norm_rms": 0.00023821985752658004,
+        "norm_p95": 0.0,
+        "norm_max": 0.002510326542604629,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.13078751356972684,
+            "max": 0.09164053844275026,
+            "peak_abs": 0.13078751356972684,
+            "rms": 0.010311041804884843
+          },
+          "y": {
+            "min": -0.1645122653513596,
+            "max": 0.18405391340596558,
+            "peak_abs": 0.18405391340596558,
+            "rms": 0.012831436779964378
+          },
+          "z": {
+            "min": -0.06127040643145065,
+            "max": 0.05253308879663976,
+            "peak_abs": 0.06127040643145065,
+            "rms": 0.011343106340110248
+          }
+        },
+        "norm_rms": 0.01999073321275022,
+        "norm_p95": 0.03200802296058367,
+        "norm_max": 0.2101842068791337,
+        "final": [
+          0.010688786321058123,
+          -0.002571572287543372,
+          -0.01678969333922531
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.0014502365374937654,
+            "max": 0.003750779666006565,
+            "peak_abs": 0.003750779666006565,
+            "rms": 0.0007217629372472147
+          },
+          "y": {
+            "min": -0.0015972141409292817,
+            "max": 0.002793047111481428,
+            "peak_abs": 0.002793047111481428,
+            "rms": 0.0006807104530100112
+          },
+          "z": {
+            "min": -0.00036824235576204956,
+            "max": 0.04393957555294037,
+            "peak_abs": 0.04393957555294037,
+            "rms": 0.0018038750793716127
+          }
+        },
+        "norm_rms": 0.002058706817494607,
+        "norm_p95": 0.0016404658167242989,
+        "norm_max": 0.04396812385134504,
+        "final": [
+          0.0006262864335440099,
+          0.0009396456298418343,
+          -0.00013910618145018816
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.003377792288705383,
+            "max": 0.003850648209734182,
+            "peak_abs": 0.003850648209734182,
+            "rms": 0.0036819930345450766
+          },
+          "y": {
+            "min": 0.017875976939390144,
+            "max": 0.0186957471958355,
+            "peak_abs": 0.0186957471958355,
+            "rms": 0.018311005158002783
+          },
+          "z": {
+            "min": -0.9998345062897742,
+            "max": -0.9998181115776604,
+            "peak_abs": 0.9998345062897742,
+            "rms": 0.9998255597940061
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0000000000000002,
+        "final": [
+          0.0037629466640514853,
+          0.018691568675828534,
+          -0.9998182162237494
+        ]
+      },
+      "gravity_final_change_deg": 0.03110668780945353,
+      "gravity_max_change_deg": 0.03128942889312697,
+      "heading_unwrapped_change_deg": 0.13142810083497208,
+      "zupt_count_delta": 1,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 6.8799451800005045,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 2778,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "assessment": "observed",
+      "provisional_assessment": "observed",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 2,
+      "stage_name": "x_forward",
+      "stage_title": "X 正方向平移（前移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再沿 X/传感器正前方移动 30–50 cm，用时约 1–2 秒；停稳至少 2 秒后按 n。",
+      "expected_kind": "translation",
+      "expected_axis": "x",
+      "expected_sign": 1,
+      "sample_count": 566,
+      "duration_s": 5.649840052999934,
+      "observed_sample_rate_hz": 100.00283100049852,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.519434628975265,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.0,
+            "max": 0.35763429643605454,
+            "peak_abs": 0.35763429643605454,
+            "rms": 0.11152579743456778
+          },
+          "y": {
+            "min": -0.03687686978502465,
+            "max": 0.032135541742675626,
+            "peak_abs": 0.03687686978502465,
+            "rms": 0.009597642616488246
+          },
+          "z": {
+            "min": -0.021268510025170946,
+            "max": 0.00012353860912737823,
+            "peak_abs": 0.021268510025170946,
+            "rms": 0.006402795671840181
+          }
+        },
+        "norm_rms": 0.11212097943572115,
+        "norm_p95": 0.28859512997565684,
+        "norm_max": 0.35872515935885446,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -5.0850033768321286,
+            "max": 4.7381469903738145,
+            "peak_abs": 5.0850033768321286,
+            "rms": 0.6876738232313093
+          },
+          "y": {
+            "min": -2.4386402613786164,
+            "max": 2.0085496788493913,
+            "peak_abs": 2.4386402613786164,
+            "rms": 0.28750122376737675
+          },
+          "z": {
+            "min": -0.22148831408535408,
+            "max": 0.17793609564621704,
+            "peak_abs": 0.22148831408535408,
+            "rms": 0.03544842293713884
+          }
+        },
+        "norm_rms": 0.7461962419592012,
+        "norm_p95": 1.6900639733960263,
+        "norm_max": 5.085855572793839,
+        "final": [
+          0.04119336942219063,
+          -0.007934371789742933,
+          0.03663798344098268
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.039746467024087906,
+            "max": 0.04229003190994263,
+            "peak_abs": 0.04229003190994263,
+            "rms": 0.007420737290903573
+          },
+          "y": {
+            "min": -0.022429868578910828,
+            "max": 0.06125536561012268,
+            "peak_abs": 0.06125536561012268,
+            "rms": 0.004725204374684369
+          },
+          "z": {
+            "min": -0.37220680713653564,
+            "max": 0.7621369957923889,
+            "peak_abs": 0.7621369957923889,
+            "rms": 0.09701586098975391
+          }
+        },
+        "norm_rms": 0.09741392191009662,
+        "norm_p95": 0.21804399009926725,
+        "norm_max": 0.7621926798065878,
+        "final": [
+          0.0007427806849591434,
+          0.0009258560603484511,
+          0.00026485350099392235
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.0031623042567776862,
+            "max": 0.007427824343955806,
+            "peak_abs": 0.007427824343955806,
+            "rms": 0.005848962045514948
+          },
+          "y": {
+            "min": 0.015503706293877094,
+            "max": 0.01904574833336477,
+            "peak_abs": 0.01904574833336477,
+            "rms": 0.017412850847754423
+          },
+          "z": {
+            "min": -0.9998578484407811,
+            "max": -0.9998068341104589,
+            "peak_abs": 0.9998578484407811,
+            "rms": 0.9998312769004294
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.006838183175559319,
+          0.01737802693821293,
+          -0.9998256065087512
+        ]
+      },
+      "gravity_final_change_deg": 0.1893726404299485,
+      "gravity_max_change_deg": 0.25181034681369985,
+      "heading_unwrapped_change_deg": 1.3708010511026765,
+      "zupt_count_delta": 4,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 1.1197866869997597,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1280,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.35763429643605454,
+        "wrong_direction_peak": 0.0,
+        "cross_axis_peak_norm": 0.036926163084053366,
+        "target_to_cross_ratio": 9.68511934538088,
+        "expected_direction_fraction_when_active": 1.0,
+        "projected_velocity_time_integral_m_estimate": 0.2847891057623341
+      },
+      "assessment": "consistent",
+      "provisional_assessment": "consistent",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 3,
+      "stage_name": "x_backward",
+      "stage_title": "X 负方向平移（后移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再沿 -X/后方移动 30–50 cm；停稳至少 2 秒后按 n。",
+      "expected_kind": "translation",
+      "expected_axis": "x",
+      "expected_sign": -1,
+      "sample_count": 490,
+      "duration_s": 4.8898126969997975,
+      "observed_sample_rate_hz": 100.00383047392219,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.6469387755102041,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.7805984639370344,
+            "max": 0.008007431592923012,
+            "peak_abs": 0.7805984639370344,
+            "rms": 0.19368466878122514
+          },
+          "y": {
+            "min": -0.016011177263079115,
+            "max": 0.14334074721113105,
+            "peak_abs": 0.14334074721113105,
+            "rms": 0.033028026235074184
+          },
+          "z": {
+            "min": -0.006930576843542581,
+            "max": 0.0005841392888149188,
+            "peak_abs": 0.006930576843542581,
+            "rms": 0.002162751136816439
+          }
+        },
+        "norm_rms": 0.19649243988092133,
+        "norm_p95": 0.5313870897827608,
+        "norm_max": 0.7936649646154105,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -37.72679850474113,
+            "max": 20.529581866376436,
+            "peak_abs": 37.72679850474113,
+            "rms": 2.240995845011295
+          },
+          "y": {
+            "min": -8.160305891748774,
+            "max": 9.397422651643367,
+            "peak_abs": 9.397422651643367,
+            "rms": 0.6600763531335903
+          },
+          "z": {
+            "min": -0.30516940575465235,
+            "max": 0.23154271354795242,
+            "peak_abs": 0.30516940575465235,
+            "rms": 0.04431691061911128
+          }
+        },
+        "norm_rms": 2.336605905558499,
+        "norm_p95": 2.7223144862169826,
+        "norm_max": 38.87959542933132,
+        "final": [
+          0.02407793272669654,
+          -0.006473256689888185,
+          -0.04419066453371201
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.06925435364246368,
+            "max": 0.15273617208003998,
+            "peak_abs": 0.15273617208003998,
+            "rms": 0.01242956602201287
+          },
+          "y": {
+            "min": -0.0963945984840393,
+            "max": 0.030361730605363846,
+            "peak_abs": 0.0963945984840393,
+            "rms": 0.006421560400668312
+          },
+          "z": {
+            "min": -0.7739830613136292,
+            "max": 1.0393164157867432,
+            "peak_abs": 1.0393164157867432,
+            "rms": 0.1685501359773488
+          }
+        },
+        "norm_rms": 0.16912976937091173,
+        "norm_p95": 0.4198458555431742,
+        "norm_max": 1.0395577303956212,
+        "final": [
+          0.0016947903204709291,
+          0.0012368087191134691,
+          9.808752656681463e-05
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.002604771021097543,
+            "max": 0.007075233492852076,
+            "peak_abs": 0.007075233492852076,
+            "rms": 0.004628246777491286
+          },
+          "y": {
+            "min": 0.014210101933847183,
+            "max": 0.017550605030612065,
+            "peak_abs": 0.017550605030612065,
+            "rms": 0.015526997731737152
+          },
+          "z": {
+            "min": -0.9998944751695611,
+            "max": -0.9998209426362707,
+            "peak_abs": 0.9998944751695611,
+            "rms": 0.9998687372216439
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.002612152891541049,
+          0.014562860033380956,
+          -0.9998905438921398
+        ]
+      },
+      "gravity_final_change_deg": 0.2777588716459243,
+      "gravity_max_change_deg": 0.2845904260427543,
+      "heading_unwrapped_change_deg": 2.344421451471857,
+      "zupt_count_delta": 2,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 1.8900074590001168,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1103,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.7805984639370344,
+        "wrong_direction_peak": 0.008007431592923012,
+        "cross_axis_peak_norm": 0.14342285088898188,
+        "target_to_cross_ratio": 5.442636644709187,
+        "expected_direction_fraction_when_active": 0.8380952380952381,
+        "projected_velocity_time_integral_m_estimate": 0.350760292133281
+      },
+      "assessment": "consistent",
+      "provisional_assessment": "consistent",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 4,
+      "stage_name": "y_left",
+      "stage_title": "Y 正方向平移（左移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再向传感器物理左侧移动 30–50 cm；停稳至少 2 秒后按 n。FLU 中左侧为 +Y。",
+      "expected_kind": "translation",
+      "expected_axis": "y",
+      "expected_sign": 1,
+      "sample_count": 527,
+      "duration_s": 5.258931829000176,
+      "observed_sample_rate_hz": 100.02031155821291,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.5559772296015181,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.024090316230687702,
+            "max": 0.07008038999348588,
+            "peak_abs": 0.07008038999348588,
+            "rms": 0.017338058679113585
+          },
+          "y": {
+            "min": -0.0011522863804221664,
+            "max": 0.6215377149654567,
+            "peak_abs": 0.6215377149654567,
+            "rms": 0.20182907627009644
+          },
+          "z": {
+            "min": -0.008150293359079965,
+            "max": 0.0013939474949149835,
+            "peak_abs": 0.008150293359079965,
+            "rms": 0.0022293030283551335
+          }
+        },
+        "norm_rms": 0.20258468377148608,
+        "norm_p95": 0.5693440060678787,
+        "norm_max": 0.6235758257472646,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -1.0669092505355802,
+            "max": 0.718870085974545,
+            "peak_abs": 1.0669092505355802,
+            "rms": 0.14833392914755814
+          },
+          "y": {
+            "min": -6.663373412609683,
+            "max": 3.320044334180031,
+            "peak_abs": 6.663373412609683,
+            "rms": 0.8784328967969407
+          },
+          "z": {
+            "min": -0.5102045531636072,
+            "max": 1.1063600892396224,
+            "peak_abs": 1.1063600892396224,
+            "rms": 0.07078811759185179
+          }
+        },
+        "norm_rms": 0.8936768243070957,
+        "norm_p95": 1.6740309456691649,
+        "norm_max": 6.671751442488009,
+        "final": [
+          0.022015188455845193,
+          0.0056988347025523495,
+          0.06064625102615295
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.14990241825580597,
+            "max": 0.307660847902298,
+            "peak_abs": 0.307660847902298,
+            "rms": 0.02444409786805168
+          },
+          "y": {
+            "min": -0.05972437560558319,
+            "max": 0.03863951191306114,
+            "peak_abs": 0.05972437560558319,
+            "rms": 0.007846559165910741
+          },
+          "z": {
+            "min": -0.5101341605186462,
+            "max": 0.9534620046615601,
+            "peak_abs": 0.9534620046615601,
+            "rms": 0.16839779569987098
+          }
+        },
+        "norm_rms": 0.17034347656397802,
+        "norm_p95": 0.4512270884332613,
+        "norm_max": 1.0019656932813912,
+        "final": [
+          0.0013573725009337068,
+          0.00032350418041460216,
+          5.830566806253046e-05
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.0016818760415585178,
+            "max": 0.00662757726566296,
+            "peak_abs": 0.00662757726566296,
+            "rms": 0.0032815074692217464
+          },
+          "y": {
+            "min": 0.011717821299319798,
+            "max": 0.02310100177787142,
+            "peak_abs": 0.02310100177787142,
+            "rms": 0.015439233092860338
+          },
+          "z": {
+            "min": -0.9999292588091591,
+            "max": -0.9997214649519791,
+            "peak_abs": 0.9999292588091591,
+            "rms": 0.9998754231354192
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.002175530565288297,
+          0.011962644963045301,
+          -0.9999260783639198
+        ]
+      },
+      "gravity_final_change_deg": 0.29499056437338855,
+      "gravity_max_change_deg": 0.3750351535957541,
+      "heading_unwrapped_change_deg": 3.549607237210598,
+      "zupt_count_delta": 4,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 2.2100548759999583,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1177,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.6215377149654567,
+        "wrong_direction_peak": 0.0011522863804221664,
+        "cross_axis_peak_norm": 0.07008677844853096,
+        "target_to_cross_ratio": 8.868116479656575,
+        "expected_direction_fraction_when_active": 1.0,
+        "projected_velocity_time_integral_m_estimate": 0.4240533013289853
+      },
+      "assessment": "consistent",
+      "provisional_assessment": "consistent",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 5,
+      "stage_name": "y_right",
+      "stage_title": "Y 负方向平移（右移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再向传感器物理右侧移动 30–50 cm；停稳至少 2 秒后按 n。FLU 中右侧为 -Y。",
+      "expected_kind": "translation",
+      "expected_axis": "y",
+      "expected_sign": -1,
+      "sample_count": 425,
+      "duration_s": 4.239946400000008,
+      "observed_sample_rate_hz": 100.00126416692419,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.6070588235294118,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.03953372661759209,
+            "max": 0.05053685502855587,
+            "peak_abs": 0.05053685502855587,
+            "rms": 0.014835320784823183
+          },
+          "y": {
+            "min": -0.6204395522900269,
+            "max": 0.0,
+            "peak_abs": 0.6204395522900269,
+            "rms": 0.21113585375104146
+          },
+          "z": {
+            "min": -0.020066856620613152,
+            "max": 0.0,
+            "peak_abs": 0.020066856620613152,
+            "rms": 0.007636522399008475
+          }
+        },
+        "norm_rms": 0.21179412634990682,
+        "norm_p95": 0.5653317952592046,
+        "norm_max": 0.6208806556657789,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -4.89384144289632,
+            "max": 4.218685668739057,
+            "peak_abs": 4.89384144289632,
+            "rms": 0.4162540102190553
+          },
+          "y": {
+            "min": -2.7899499380376938,
+            "max": 10.586579897678204,
+            "peak_abs": 10.586579897678204,
+            "rms": 0.9205600665468917
+          },
+          "z": {
+            "min": -0.3202766497389895,
+            "max": 0.4316651083231271,
+            "peak_abs": 0.4316651083231271,
+            "rms": 0.060447366263114165
+          }
+        },
+        "norm_rms": 1.0121028214724086,
+        "norm_p95": 2.1485058126095127,
+        "norm_max": 11.090778684318057,
+        "final": [
+          0.03035740343200278,
+          -0.030890473219414516,
+          0.0640140405977423
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.15361584722995758,
+            "max": 0.16626127064228058,
+            "peak_abs": 0.16626127064228058,
+            "rms": 0.02221003647166199
+          },
+          "y": {
+            "min": -0.08664305508136749,
+            "max": 0.09225912392139435,
+            "peak_abs": 0.09225912392139435,
+            "rms": 0.013634767511383369
+          },
+          "z": {
+            "min": -1.299242615699768,
+            "max": 0.4657643735408783,
+            "peak_abs": 1.299242615699768,
+            "rms": 0.16897664258238357
+          }
+        },
+        "norm_rms": 0.1709745546669932,
+        "norm_p95": 0.3917110713769828,
+        "norm_max": 1.3038825575122661,
+        "final": [
+          0.0017077451338991523,
+          -0.00017434643814340234,
+          -0.0005852357135154307
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.001605865670275019,
+            "max": 0.008605783749124138,
+            "peak_abs": 0.008605783749124138,
+            "rms": 0.0033526160373018683
+          },
+          "y": {
+            "min": 0.011006922047557825,
+            "max": 0.02714986256443834,
+            "peak_abs": 0.02714986256443834,
+            "rms": 0.014953528158293676
+          },
+          "z": {
+            "min": -0.9999380860256961,
+            "max": -0.9996068645435887,
+            "peak_abs": 0.9999380860256961,
+            "rms": 0.9998825690856527
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.003450301847802177,
+          0.015079142489293419,
+          -0.9998803502814457
+        ]
+      },
+      "gravity_final_change_deg": 0.22763794673204882,
+      "gravity_max_change_deg": 0.948870758331619,
+      "heading_unwrapped_change_deg": -4.9476376105844215,
+      "zupt_count_delta": 1,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 1.3299530490003235,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 948,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.6204395522900269,
+        "wrong_direction_peak": 0.0,
+        "cross_axis_peak_norm": 0.05151661459323182,
+        "target_to_cross_ratio": 12.043484557145947,
+        "expected_direction_fraction_when_active": 1.0,
+        "projected_velocity_time_integral_m_estimate": 0.44605218975187316
+      },
+      "assessment": "consistent",
+      "provisional_assessment": "consistent",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 6,
+      "stage_name": "z_up",
+      "stage_title": "Z 正方向平移（上移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再竖直向上移动 15–30 cm；放到稳定支撑面并静止至少 2 秒后按 n。FLU 中上方为 +Z。",
+      "expected_kind": "translation",
+      "expected_axis": "z",
+      "expected_sign": 1,
+      "sample_count": 592,
+      "duration_s": 5.9097901029999775,
+      "observed_sample_rate_hz": 100.003551682824,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.0033783783783783786,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.031436677490085996,
+            "max": 0.09079640548004508,
+            "peak_abs": 0.09079640548004508,
+            "rms": 0.03510589808580142
+          },
+          "y": {
+            "min": -0.10467876303173729,
+            "max": 0.030833667912382217,
+            "peak_abs": 0.10467876303173729,
+            "rms": 0.041023048500431654
+          },
+          "z": {
+            "min": -0.10271811854721374,
+            "max": 0.5361528806476423,
+            "peak_abs": 0.5361528806476423,
+            "rms": 0.19362086359877428
+          }
+        },
+        "norm_rms": 0.20100834164137224,
+        "norm_p95": 0.5028051822172358,
+        "norm_max": 0.5453316954494426,
+        "final": [
+          0.01790647905343376,
+          -0.0526081034209006,
+          -0.059823577191115
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.6196116972775507,
+            "max": 0.4998476802180627,
+            "peak_abs": 0.6196116972775507,
+            "rms": 0.1635782145371402
+          },
+          "y": {
+            "min": -1.3374810215043917,
+            "max": 1.0524047047866125,
+            "peak_abs": 1.3374810215043917,
+            "rms": 0.3241260050128243
+          },
+          "z": {
+            "min": -1.7442199258103113,
+            "max": 3.8829870259241055,
+            "peak_abs": 3.8829870259241055,
+            "rms": 0.6270463455578753
+          }
+        },
+        "norm_rms": 0.7245706445021203,
+        "norm_p95": 1.2794937763724015,
+        "norm_max": 4.110782595418982,
+        "final": [
+          -0.032674558047204094,
+          -0.05907006937986527,
+          -0.2088683870181196
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.9185880422592163,
+            "max": 1.217899203300476,
+            "peak_abs": 1.217899203300476,
+            "rms": 0.16409088156724533
+          },
+          "y": {
+            "min": -0.6806460618972778,
+            "max": 0.5190808773040771,
+            "peak_abs": 0.6806460618972778,
+            "rms": 0.19016195309206796
+          },
+          "z": {
+            "min": -0.3887306749820709,
+            "max": 0.48971784114837646,
+            "peak_abs": 0.48971784114837646,
+            "rms": 0.0895541097292188
+          }
+        },
+        "norm_rms": 0.26665956646386924,
+        "norm_p95": 0.557788725990086,
+        "norm_max": 1.3228415186514535,
+        "final": [
+          0.03477250784635544,
+          -0.04303945228457451,
+          0.04280721768736839
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.3803066777872292,
+            "max": 0.08069669701399772,
+            "peak_abs": 0.3803066777872292,
+            "rms": 0.26113024182715405
+          },
+          "y": {
+            "min": -0.060770741390334046,
+            "max": 0.03939480480653711,
+            "peak_abs": 0.060770741390334046,
+            "rms": 0.021353096195299993
+          },
+          "z": {
+            "min": -0.9999667769553778,
+            "max": -0.9247791919267391,
+            "peak_abs": 0.9999667769553778,
+            "rms": 0.9650673769671039
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          -0.2374227553318161,
+          -0.007478128900837054,
+          -0.9713776365753903
+        ]
+      },
+      "gravity_final_change_deg": 13.908892305683132,
+      "gravity_max_change_deg": 22.498851451508393,
+      "heading_unwrapped_change_deg": -6.077492732451514,
+      "zupt_count_delta": 0,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.08165240306063583,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1331,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.5361528806476423,
+        "wrong_direction_peak": 0.10271811854721374,
+        "cross_axis_peak_norm": 0.10598542933700275,
+        "target_to_cross_ratio": 5.058741413811068,
+        "expected_direction_fraction_when_active": 0.42857142857142855,
+        "projected_velocity_time_integral_m_estimate": 0.3875951716050563
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 7,
+      "stage_name": "z_down",
+      "stage_title": "Z 负方向平移（下移）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，姿态保持不变；先静止约 1 秒，再竖直向下移动 15–30 cm；放稳至少 2 秒后按 n。FLU 中下方为 -Z。",
+      "expected_kind": "translation",
+      "expected_axis": "z",
+      "expected_sign": -1,
+      "sample_count": 763,
+      "duration_s": 7.62000335599987,
+      "observed_sample_rate_hz": 99.99995595802635,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.42201834862385323,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.09162564332161295,
+            "max": 0.022066543913010567,
+            "peak_abs": 0.09162564332161295,
+            "rms": 0.0275636684215653
+          },
+          "y": {
+            "min": -0.2588954961365498,
+            "max": 0.0,
+            "peak_abs": 0.2588954961365498,
+            "rms": 0.1354842402165913
+          },
+          "z": {
+            "min": -0.7606120042781356,
+            "max": 0.0,
+            "peak_abs": 0.7606120042781356,
+            "rms": 0.2428443176900188
+          }
+        },
+        "norm_rms": 0.2794442659963733,
+        "norm_p95": 0.670777617080958,
+        "norm_max": 0.7725031846457632,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -1.330319331187577,
+            "max": 2.2134194606570015,
+            "peak_abs": 2.2134194606570015,
+            "rms": 0.2116649032088228
+          },
+          "y": {
+            "min": -2.6608885304013667,
+            "max": 2.6053043262207707,
+            "peak_abs": 2.6608885304013667,
+            "rms": 0.3728638202847175
+          },
+          "z": {
+            "min": -2.8753978283376327,
+            "max": 6.1135193346736205,
+            "peak_abs": 6.1135193346736205,
+            "rms": 0.6634888882439972
+          }
+        },
+        "norm_rms": 0.7899664325469593,
+        "norm_p95": 1.6779739794110586,
+        "norm_max": 6.29611262420895,
+        "final": [
+          -0.006198806086387405,
+          -0.0339629869981974,
+          0.06276999597049837
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -1.5273319482803345,
+            "max": 1.1264714002609253,
+            "peak_abs": 1.5273319482803345,
+            "rms": 0.25351265788362637
+          },
+          "y": {
+            "min": -0.7009125351905823,
+            "max": 1.3196525573730469,
+            "peak_abs": 1.3196525573730469,
+            "rms": 0.13939184361550416
+          },
+          "z": {
+            "min": -0.36959511041641235,
+            "max": 0.4475623369216919,
+            "peak_abs": 0.4475623369216919,
+            "rms": 0.08056571166296075
+          }
+        },
+        "norm_rms": 0.3003158132191996,
+        "norm_p95": 0.6540057340011949,
+        "norm_max": 1.964203320831521,
+        "final": [
+          0.000546890078112483,
+          -0.001774543896317482,
+          0.00017440624651499093
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.16103865691744595,
+            "max": 0.0457931037897307,
+            "peak_abs": 0.16103865691744595,
+            "rms": 0.07933267812771523
+          },
+          "y": {
+            "min": -0.19671741108651924,
+            "max": 0.026916224239393195,
+            "peak_abs": 0.19671741108651924,
+            "rms": 0.06308062965525552
+          },
+          "z": {
+            "min": -0.9999237976020722,
+            "max": -0.9788786476044843,
+            "peak_abs": 0.9999237976020722,
+            "rms": 0.9948503205725876
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.0014013366378227195,
+          0.012535237957491684,
+          -0.999920448868297
+        ]
+      },
+      "gravity_final_change_deg": 9.484878436127076,
+      "gravity_max_change_deg": 12.092503898902919,
+      "heading_unwrapped_change_deg": 5.482244307605842,
+      "zupt_count_delta": 1,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 3.470081632000074,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1724,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.7606120042781356,
+        "wrong_direction_peak": 0.0,
+        "cross_axis_peak_norm": 0.26646318514849987,
+        "target_to_cross_ratio": 2.8544731380218495,
+        "expected_direction_fraction_when_active": 1.0,
+        "projected_velocity_time_integral_m_estimate": 1.0694290006999776
+      },
+      "assessment": "consistent",
+      "provisional_assessment": "consistent",
+      "validity_reasons": []
+    },
+    {
+      "stage_index": 8,
+      "stage_name": "yaw_left",
+      "stage_title": "绕 Z 正方向旋转（左转）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，保持大致水平并绕传感器中心旋转；从上向下看逆时针转 45–90°，停稳至少 2 秒后按 n。右手定则下期望 gyro_z > 0。",
+      "expected_kind": "rotation",
+      "expected_axis": "z",
+      "expected_sign": 1,
+      "sample_count": 908,
+      "duration_s": 9.068870787000378,
+      "observed_sample_rate_hz": 100.01245152815763,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.41519823788546256,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.08121486650810944,
+            "max": 0.05191011827303844,
+            "peak_abs": 0.08121486650810944,
+            "rms": 0.025811947522852777
+          },
+          "y": {
+            "min": -0.1791810218757541,
+            "max": 0.0969827143455788,
+            "peak_abs": 0.1791810218757541,
+            "rms": 0.05708058292345384
+          },
+          "z": {
+            "min": -0.05074156757974315,
+            "max": 0.0,
+            "peak_abs": 0.05074156757974315,
+            "rms": 0.017671250039852676
+          }
+        },
+        "norm_rms": 0.06509011184331141,
+        "norm_p95": 0.17612073475350754,
+        "norm_max": 0.19506056839370348,
+        "final": [
+          0.004845719873298684,
+          -0.009383020126828802,
+          -0.004646594066754754
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.8526899666662704,
+            "max": 0.9590067816292269,
+            "peak_abs": 0.9590067816292269,
+            "rms": 0.15587598092890975
+          },
+          "y": {
+            "min": -2.5754262299491377,
+            "max": 2.0309680853408616,
+            "peak_abs": 2.5754262299491377,
+            "rms": 0.35653758862654517
+          },
+          "z": {
+            "min": -0.16535631661564842,
+            "max": 0.13990505369947037,
+            "peak_abs": 0.16535631661564842,
+            "rms": 0.03180530145031245
+          }
+        },
+        "norm_rms": 0.39042022326529996,
+        "norm_p95": 0.8902203647346136,
+        "norm_max": 2.577447257938138,
+        "final": [
+          0.01616108204944096,
+          -0.02950739500065544,
+          -0.08066969570837301
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.049642860889434814,
+            "max": 0.023274308070540428,
+            "peak_abs": 0.049642860889434814,
+            "rms": 0.006777831961050176
+          },
+          "y": {
+            "min": -0.029613927006721497,
+            "max": 0.011739457026124,
+            "peak_abs": 0.029613927006721497,
+            "rms": 0.006642396772777359
+          },
+          "z": {
+            "min": -0.38540393114089966,
+            "max": 2.510239362716675,
+            "peak_abs": 2.510239362716675,
+            "rms": 0.7012282856907641
+          }
+        },
+        "norm_rms": 0.7012924989573096,
+        "norm_p95": 1.6681392861023394,
+        "norm_max": 2.51033254575118,
+        "final": [
+          0.001041174866259098,
+          0.001855770475231111,
+          -0.00041136061190627515
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.0008166234149064232,
+            "max": 0.009809933646680062,
+            "peak_abs": 0.009809933646680062,
+            "rms": 0.004168509321125987
+          },
+          "y": {
+            "min": 0.0011294792756148667,
+            "max": 0.014428335638226911,
+            "peak_abs": 0.014428335638226911,
+            "rms": 0.00855893631548634
+          },
+          "z": {
+            "min": -0.9999984513544542,
+            "max": -0.9998819962266575,
+            "peak_abs": 0.9999984513544542,
+            "rms": 0.9999546830427806
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.0015915280939765098,
+          0.004847513533127028,
+          -0.9999869842407311
+        ]
+      },
+      "gravity_final_change_deg": 0.5402501316973433,
+      "gravity_max_change_deg": 0.7536421164646606,
+      "heading_unwrapped_change_deg": 176.0492050269675,
+      "zupt_count_delta": 5,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.18992532400079654,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.011537456574659629,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 2039,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 2.510239362716675,
+        "wrong_direction_peak": 0.38540393114089966,
+        "cross_axis_peak_norm": 0.0497753004871994,
+        "target_to_cross_ratio": 50.43142558952964,
+        "expected_direction_fraction_when_active": 0.6794871794871795,
+        "integrated_target_angle_deg": 175.6629595896466
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 9,
+      "stage_name": "yaw_right",
+      "stage_title": "绕 Z 负方向旋转（右转）",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，保持大致水平并绕传感器中心旋转；从上向下看顺时针转回，停稳至少 2 秒后按 n。期望 gyro_z < 0。",
+      "expected_kind": "rotation",
+      "expected_axis": "z",
+      "expected_sign": -1,
+      "sample_count": 828,
+      "duration_s": 8.269969979999587,
+      "observed_sample_rate_hz": 100.0003630001135,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.4758454106280193,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.0,
+            "max": 0.08558215594122281,
+            "peak_abs": 0.08558215594122281,
+            "rms": 0.035059898486703725
+          },
+          "y": {
+            "min": -0.14865411193387562,
+            "max": 0.0,
+            "peak_abs": 0.14865411193387562,
+            "rms": 0.03749602826831786
+          },
+          "z": {
+            "min": -0.0445602050378136,
+            "max": 0.0006052275066579317,
+            "peak_abs": 0.0445602050378136,
+            "rms": 0.014439583898229677
+          }
+        },
+        "norm_rms": 0.053325886780722864,
+        "norm_p95": 0.1192278469609871,
+        "norm_max": 0.1539339277166365,
+        "final": [
+          0.0002068531934261097,
+          -0.0003614387484680025,
+          0.00048612526310922463
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -1.0656591082557327,
+            "max": 1.4174846296399,
+            "peak_abs": 1.4174846296399,
+            "rms": 0.181194314083467
+          },
+          "y": {
+            "min": -1.464357967327285,
+            "max": 1.8048509604496281,
+            "peak_abs": 1.8048509604496281,
+            "rms": 0.2882071460206799
+          },
+          "z": {
+            "min": -0.2015843507837971,
+            "max": 0.2494128195361185,
+            "peak_abs": 0.2494128195361185,
+            "rms": 0.038769897928299255
+          }
+        },
+        "norm_rms": 0.3426336869879176,
+        "norm_p95": 0.8493031429598146,
+        "norm_max": 1.8154765425999648,
+        "final": [
+          0.02518639321664748,
+          -0.052350636388038,
+          0.2140904781610029
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.1444459706544876,
+            "max": 0.13062794506549835,
+            "peak_abs": 0.1444459706544876,
+            "rms": 0.02069247122969598
+          },
+          "y": {
+            "min": -0.008437576703727245,
+            "max": 0.05115257948637009,
+            "peak_abs": 0.05115257948637009,
+            "rms": 0.00924786987680491
+          },
+          "z": {
+            "min": -3.7427966594696045,
+            "max": 0.6479805707931519,
+            "peak_abs": 3.7427966594696045,
+            "rms": 0.9634620180445138
+          }
+        },
+        "norm_rms": 0.9637285726164085,
+        "norm_p95": 2.675604130839774,
+        "norm_max": 3.7429561827650866,
+        "final": [
+          0.0021758018992841244,
+          -0.0003230087168049067,
+          -0.00024611115804873407
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.0007626000867533724,
+            "max": 0.006942628988404681,
+            "peak_abs": 0.006942628988404681,
+            "rms": 0.0039937522538283894
+          },
+          "y": {
+            "min": -0.004450653885269369,
+            "max": 0.01361410280009202,
+            "peak_abs": 0.01361410280009202,
+            "rms": 0.01002669064778192
+          },
+          "z": {
+            "min": -0.9999923160863486,
+            "max": -0.9998929919261009,
+            "peak_abs": 0.9999923160863486,
+            "rms": 0.9999417560126131
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.0037537159255462476,
+          0.011764375123774356,
+          -0.9999237516404426
+        ]
+      },
+      "gravity_final_change_deg": 0.437729930811784,
+      "gravity_max_change_deg": 0.5718195038790205,
+      "heading_unwrapped_change_deg": -179.20612850711547,
+      "zupt_count_delta": 6,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0006401124775832044,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1854,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 3.7427966594696045,
+        "wrong_direction_peak": 0.6479805707931519,
+        "cross_axis_peak_norm": 0.14444889187813376,
+        "target_to_cross_ratio": 25.91087138714269,
+        "expected_direction_fraction_when_active": 0.8995433789954338,
+        "integrated_target_angle_deg": 179.48077298948024
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 10,
+      "stage_name": "roll_positive",
+      "stage_title": "绕 X 正方向旋转",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，按右手定则绕机体 +X 轴旋转约 30–45°，停稳至少 2 秒后按 n；期望 gyro_x > 0。不能方便完成可按 s 跳过。",
+      "expected_kind": "rotation",
+      "expected_axis": "x",
+      "expected_sign": 1,
+      "sample_count": 686,
+      "duration_s": 6.849993510999411,
+      "observed_sample_rate_hz": 100.00009473002534,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.0,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.1511223952971997,
+            "max": 0.23931075181690833,
+            "peak_abs": 0.23931075181690833,
+            "rms": 0.18354508148605111
+          },
+          "y": {
+            "min": -0.3070410892499022,
+            "max": -0.10855588258549621,
+            "peak_abs": 0.3070410892499022,
+            "rms": 0.20663175396006322
+          },
+          "z": {
+            "min": -0.16690314061379896,
+            "max": 0.15610397454449954,
+            "peak_abs": 0.16690314061379896,
+            "rms": 0.1027102633327956
+          }
+        },
+        "norm_rms": 0.29484720937500086,
+        "norm_p95": 0.36080620355844484,
+        "norm_max": 0.3967151713477995,
+        "final": [
+          0.195248273428149,
+          -0.30587021647153556,
+          -0.16032607266597865
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -1.0410863764333542,
+            "max": 3.1574829641979085,
+            "peak_abs": 3.1574829641979085,
+            "rms": 0.21416869562320087
+          },
+          "y": {
+            "min": -1.8169790178608376,
+            "max": 2.103286988965505,
+            "peak_abs": 2.103286988965505,
+            "rms": 0.3554119687674082
+          },
+          "z": {
+            "min": -2.0000337198100224,
+            "max": 2.4110456079064235,
+            "peak_abs": 2.4110456079064235,
+            "rms": 0.40461835095834103
+          }
+        },
+        "norm_rms": 0.579570450989624,
+        "norm_p95": 1.2940200035103626,
+        "norm_max": 4.064075678933357,
+        "final": [
+          -0.028652474093516123,
+          -0.2913114475909513,
+          -0.014179694196139181
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.7321593761444092,
+            "max": 3.082986354827881,
+            "peak_abs": 3.082986354827881,
+            "rms": 0.7593197171219409
+          },
+          "y": {
+            "min": -0.9013035297393799,
+            "max": 1.5623433589935303,
+            "peak_abs": 1.5623433589935303,
+            "rms": 0.17202081840556233
+          },
+          "z": {
+            "min": -0.5043704509735107,
+            "max": 1.2446026802062988,
+            "peak_abs": 1.2446026802062988,
+            "rms": 0.15067916277694193
+          }
+        },
+        "norm_rms": 0.7930080736475658,
+        "norm_p95": 1.9862977503087818,
+        "norm_max": 3.3860609714832615,
+        "final": [
+          -0.008309559896588326,
+          -0.015729939565062523,
+          -0.021003790199756622
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.11339302960730482,
+            "max": 0.021180202536498986,
+            "peak_abs": 0.11339302960730482,
+            "rms": 0.08039903150770203
+          },
+          "y": {
+            "min": -0.9988860587118931,
+            "max": 0.11811288559217203,
+            "peak_abs": 0.9988860587118931,
+            "rms": 0.7126464603638842
+          },
+          "z": {
+            "min": -0.9987493593555541,
+            "max": 0.6507064411355148,
+            "peak_abs": 0.9987493593555541,
+            "rms": 0.6969010103762587
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0000000000000002,
+        "final": [
+          -0.11317882748372517,
+          -0.8322953720790672,
+          0.5426554769143828
+        ]
+      },
+      "gravity_final_change_deg": 128.1077827701743,
+      "gravity_max_change_deg": 135.90531535073686,
+      "heading_unwrapped_change_deg": 8.666663113289099,
+      "zupt_count_delta": 0,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.3967151713477995,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1545,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 3.082986354827881,
+        "wrong_direction_peak": 0.7321593761444092,
+        "cross_axis_peak_norm": 1.5764500830555606,
+        "target_to_cross_ratio": 1.9556511100258058,
+        "expected_direction_fraction_when_active": 0.574468085106383,
+        "integrated_target_angle_deg": 130.18843994246433
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 11,
+      "stage_name": "roll_negative",
+      "stage_title": "绕 X 负方向旋转",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，按右手定则绕机体 -X 方向转回初始姿态，停稳至少 2 秒后按 n；期望 gyro_x < 0。",
+      "expected_kind": "rotation",
+      "expected_axis": "x",
+      "expected_sign": -1,
+      "sample_count": 670,
+      "duration_s": 6.689707964999798,
+      "observed_sample_rate_hz": 100.0043654372019,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.0,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.175725536516597,
+            "max": 0.2771909252668671,
+            "peak_abs": 0.2771909252668671,
+            "rms": 0.2270270707464245
+          },
+          "y": {
+            "min": -0.4850795912377127,
+            "max": 0.6607984373319749,
+            "peak_abs": 0.6607984373319749,
+            "rms": 0.5314100513778743
+          },
+          "z": {
+            "min": -0.6580459469036963,
+            "max": -0.18537289064963308,
+            "peak_abs": 0.6580459469036963,
+            "rms": 0.3760268108432321
+          }
+        },
+        "norm_rms": 0.6894447737346835,
+        "norm_p95": 0.7144225026481701,
+        "norm_max": 0.7190025427722858,
+        "final": [
+          0.2771909252668671,
+          0.6003703995525224,
+          -0.2461463209227259
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.3215499936820351,
+            "max": 0.3001561651249174,
+            "peak_abs": 0.3215499936820351,
+            "rms": 0.08241267522788216
+          },
+          "y": {
+            "min": -0.8246646378999245,
+            "max": 0.7178735423040887,
+            "peak_abs": 0.8246646378999245,
+            "rms": 0.21627455234902795
+          },
+          "z": {
+            "min": -0.6139918951607068,
+            "max": 0.6412443666959478,
+            "peak_abs": 0.6412443666959478,
+            "rms": 0.200777652229822
+          }
+        },
+        "norm_rms": 0.30639549061124904,
+        "norm_p95": 0.595340906931145,
+        "norm_max": 0.9094153962868557,
+        "final": [
+          0.059761499450775024,
+          -0.024178031929045496,
+          0.09543173193684495
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -1.7420884370803833,
+            "max": 0.22502441704273224,
+            "peak_abs": 1.7420884370803833,
+            "rms": 0.6071208343321883
+          },
+          "y": {
+            "min": -0.26661112904548645,
+            "max": 0.1932712346315384,
+            "peak_abs": 0.26661112904548645,
+            "rms": 0.07377672987711585
+          },
+          "z": {
+            "min": -0.21246589720249176,
+            "max": 0.10797601193189621,
+            "peak_abs": 0.21246589720249176,
+            "rms": 0.04682494002512968
+          }
+        },
+        "norm_rms": 0.61337695453932,
+        "norm_p95": 1.4442093483083038,
+        "norm_max": 1.7504483932604646,
+        "final": [
+          0.00607540225610137,
+          -0.007673011627048254,
+          -0.00875602476298809
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.10616706726477827,
+            "max": -0.022037176760810597,
+            "peak_abs": 0.10616706726477827,
+            "rms": 0.0680265140424876
+          },
+          "y": {
+            "min": -0.9994454155777809,
+            "max": 0.019919124613488822,
+            "peak_abs": 0.9994454155777809,
+            "rms": 0.5551417211797943
+          },
+          "z": {
+            "min": -0.9997290403325709,
+            "max": 0.5344481947207871,
+            "peak_abs": 0.9997290403325709,
+            "rms": 0.8289692773515571
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0000000000000002,
+        "final": [
+          -0.02571859096611951,
+          -0.015505706085395499,
+          -0.999548961861054
+        ]
+      },
+      "gravity_final_change_deg": 121.07295297335367,
+      "gravity_max_change_deg": 122.60385364311806,
+      "heading_unwrapped_change_deg": -7.122193417409136,
+      "zupt_count_delta": 0,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.705597220100073,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1513,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 1.7420884370803833,
+        "wrong_direction_peak": 0.22502441704273224,
+        "cross_axis_peak_norm": 0.2666363180528755,
+        "target_to_cross_ratio": 6.53357520761638,
+        "expected_direction_fraction_when_active": 0.6991525423728814,
+        "integrated_target_angle_deg": 121.94566786199766
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 12,
+      "stage_name": "pitch_positive",
+      "stage_title": "绕 Y 正方向旋转",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，按右手定则绕机体 +Y 轴旋转约 30–45°，停稳至少 2 秒后按 n；期望 gyro_y > 0。不能方便完成可按 s 跳过。",
+      "expected_kind": "rotation",
+      "expected_axis": "y",
+      "expected_sign": 1,
+      "sample_count": 645,
+      "duration_s": 6.438996086999396,
+      "observed_sample_rate_hz": 100.01559114164755,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.0,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.38439991445905203,
+            "max": 0.6904612375591266,
+            "peak_abs": 0.6904612375591266,
+            "rms": 0.5958827824151899
+          },
+          "y": {
+            "min": 0.5161861617058788,
+            "max": 0.6024611713263437,
+            "peak_abs": 0.6024611713263437,
+            "rms": 0.5600383794037098
+          },
+          "z": {
+            "min": -0.3967153298758096,
+            "max": -0.11328256990593452,
+            "peak_abs": 0.3967153298758096,
+            "rms": 0.24687957463698695
+          }
+        },
+        "norm_rms": 0.8542065330802278,
+        "norm_p95": 0.9331654294639649,
+        "norm_max": 0.9403803142056851,
+        "final": [
+          0.6838092976757967,
+          0.6017091296778827,
+          -0.2156720313418925
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.3709655071565443,
+            "max": 0.3557889284085163,
+            "peak_abs": 0.3709655071565443,
+            "rms": 0.10302327686739475
+          },
+          "y": {
+            "min": -0.5717783200559845,
+            "max": 0.5222823808297102,
+            "peak_abs": 0.5717783200559845,
+            "rms": 0.13874868135064192
+          },
+          "z": {
+            "min": -0.8423083426388231,
+            "max": 0.7538215944131554,
+            "peak_abs": 0.8423083426388231,
+            "rms": 0.23378995303495304
+          }
+        },
+        "norm_rms": 0.2907279386180893,
+        "norm_p95": 0.5352174023900446,
+        "norm_max": 0.8758322165708452,
+        "final": [
+          0.054832291353634766,
+          -0.06310728700498114,
+          -0.0640843029689595
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.3960699439048767,
+            "max": 0.3893929123878479,
+            "peak_abs": 0.3960699439048767,
+            "rms": 0.09503590868753077
+          },
+          "y": {
+            "min": -0.19334478676319122,
+            "max": 0.8588927984237671,
+            "peak_abs": 0.8588927984237671,
+            "rms": 0.1873013823266236
+          },
+          "z": {
+            "min": -0.15865451097488403,
+            "max": 0.3058265149593353,
+            "peak_abs": 0.3058265149593353,
+            "rms": 0.053301634027458196
+          }
+        },
+        "norm_rms": 0.2166903226992978,
+        "norm_p95": 0.46748927475673474,
+        "norm_max": 0.8736666080402049,
+        "final": [
+          -0.009675562381744385,
+          -0.04165695235133171,
+          -0.009593402035534382
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.03885134890692165,
+            "max": 0.5093418555709822,
+            "peak_abs": 0.5093418555709822,
+            "rms": 0.39815280417251525
+          },
+          "y": {
+            "min": -0.16938450994549722,
+            "max": -0.06669457637460925,
+            "peak_abs": 0.16938450994549722,
+            "rms": 0.13235641729056086
+          },
+          "z": {
+            "min": -0.9972977925821159,
+            "max": -0.8478452753393577,
+            "peak_abs": 0.9972977925821159,
+            "rms": 0.9077202891483527
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          0.43974663054490587,
+          -0.12692463375594182,
+          -0.8891080014656949
+        ]
+      },
+      "gravity_final_change_deg": 28.161079442415645,
+      "gravity_max_change_deg": 32.89200094739811,
+      "heading_unwrapped_change_deg": 7.667242513176154,
+      "zupt_count_delta": 0,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0398875129994849,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.9360360342576133,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1463,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.8588927984237671,
+        "wrong_direction_peak": 0.19334478676319122,
+        "cross_axis_peak_norm": 0.4693668217717439,
+        "target_to_cross_ratio": 1.8298967003710633,
+        "expected_direction_fraction_when_active": 0.6202830188679245,
+        "integrated_target_angle_deg": 28.763659277754005
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 13,
+      "stage_name": "pitch_negative",
+      "stage_title": "绕 Y 负方向旋转",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，按右手定则绕机体 -Y 方向转回初始姿态，停稳至少 2 秒后按 n；期望 gyro_y < 0。",
+      "expected_kind": "rotation",
+      "expected_axis": "y",
+      "expected_sign": -1,
+      "sample_count": 578,
+      "duration_s": 5.769995153999844,
+      "observed_sample_rate_hz": 100.00008398620842,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.0,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": 0.4626829974551878,
+            "max": 0.7440362406604751,
+            "peak_abs": 0.7440362406604751,
+            "rms": 0.617985133509668
+          },
+          "y": {
+            "min": 0.6143894432966844,
+            "max": 0.7915340504636248,
+            "peak_abs": 0.7915340504636248,
+            "rms": 0.7282135677802183
+          },
+          "z": {
+            "min": -0.6023267500091524,
+            "max": -0.2661289152361791,
+            "peak_abs": 0.6023267500091524,
+            "rms": 0.4815012241667011
+          }
+        },
+        "norm_rms": 1.069599950641448,
+        "norm_p95": 1.1449273878802488,
+        "norm_max": 1.1549240963163685,
+        "final": [
+          0.6200295119185126,
+          0.767746094156029,
+          -0.5853312640117113
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.5472284547221093,
+            "max": 0.3815493717508701,
+            "peak_abs": 0.5472284547221093,
+            "rms": 0.10382133549607366
+          },
+          "y": {
+            "min": -0.708488310109652,
+            "max": 0.6362518972920935,
+            "peak_abs": 0.708488310109652,
+            "rms": 0.1445349690750986
+          },
+          "z": {
+            "min": -0.9389921347442645,
+            "max": 1.318980651231339,
+            "peak_abs": 1.318980651231339,
+            "rms": 0.25177991203454303
+          }
+        },
+        "norm_rms": 0.3083218303880706,
+        "norm_p95": 0.6232578339708216,
+        "norm_max": 1.3258094972271506,
+        "final": [
+          0.025308356137383914,
+          0.02466976779931085,
+          -0.08309527130127314
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.4033673107624054,
+            "max": 0.23558931052684784,
+            "peak_abs": 0.4033673107624054,
+            "rms": 0.08124771681566954
+          },
+          "y": {
+            "min": -0.7488358020782471,
+            "max": 0.14381524920463562,
+            "peak_abs": 0.7488358020782471,
+            "rms": 0.20891247565683166
+          },
+          "z": {
+            "min": -0.4050765335559845,
+            "max": 0.15008445084095,
+            "peak_abs": 0.4050765335559845,
+            "rms": 0.0680135508240286
+          }
+        },
+        "norm_rms": 0.2342465732268418,
+        "norm_p95": 0.5709887112684715,
+        "norm_max": 0.8374848825302553,
+        "final": [
+          0.003005224047228694,
+          -0.013813511468470097,
+          0.0004083460080437362
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": -0.10824405857144188,
+            "max": 0.42589578121724087,
+            "peak_abs": 0.42589578121724087,
+            "rms": 0.24710097961859523
+          },
+          "y": {
+            "min": -0.13402521241960172,
+            "max": 0.007784419548145955,
+            "peak_abs": 0.13402521241960172,
+            "rms": 0.07361632657481526
+          },
+          "z": {
+            "min": -0.9998968053223827,
+            "max": -0.896027178640766,
+            "peak_abs": 0.9998968053223827,
+            "rms": 0.9661892890801268
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0,
+        "final": [
+          -0.016889050394374244,
+          -0.006720282432752311,
+          -0.9998347852424422
+        ]
+      },
+      "gravity_final_change_deg": 27.185816041721313,
+      "gravity_max_change_deg": 32.44734347299127,
+      "heading_unwrapped_change_deg": -6.253584600280274,
+      "zupt_count_delta": 0,
+      "final_stationary": false,
+      "final_stationary_elapsed_s": 0.0,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 1.1473810828888957,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 1279,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "direction": {
+        "conclusion": "consistent",
+        "correct_direction_peak": 0.7488358020782471,
+        "wrong_direction_peak": 0.14381524920463562,
+        "cross_axis_peak_norm": 0.4898508791546092,
+        "target_to_cross_ratio": 1.5287015578508245,
+        "expected_direction_fraction_when_active": 0.5414201183431953,
+        "integrated_target_angle_deg": 26.505610251711428
+      },
+      "assessment": "invalid_or_incomplete",
+      "provisional_assessment": "consistent",
+      "validity_reasons": [
+        "not_stationary_at_end"
+      ]
+    },
+    {
+      "stage_index": 14,
+      "stage_name": "static_end",
+      "stage_title": "结束静止基线",
+      "attempt": 1,
+      "status": "completed",
+      "instruction": "按 b 开始录制后，恢复到稳定支撑面，完全不动至少 5 秒，然后按 n；用于检查全程后的漂移。",
+      "expected_kind": "static",
+      "expected_axis": null,
+      "expected_sign": 0,
+      "sample_count": 1580,
+      "duration_s": 15.789831416000197,
+      "observed_sample_rate_hz": 100.00106767447582,
+      "estimated_rows_missed": 0,
+      "policy_ready_fraction": 1.0,
+      "stationary_fraction": 0.9696202531645569,
+      "velocity_body_flu_mps": {
+        "axes": {
+          "x": {
+            "min": -0.0005826074623625654,
+            "max": 0.005056310248124972,
+            "peak_abs": 0.005056310248124972,
+            "rms": 0.0005682348943172359
+          },
+          "y": {
+            "min": -0.004911924832110043,
+            "max": 0.0010995197821138552,
+            "peak_abs": 0.004911924832110043,
+            "rms": 0.00029146529953064923
+          },
+          "z": {
+            "min": -0.008067599994987362,
+            "max": 0.0,
+            "peak_abs": 0.008067599994987362,
+            "rms": 0.000809323397686201
+          }
+        },
+        "norm_rms": 0.0010309448472117933,
+        "norm_p95": 0.0,
+        "norm_max": 0.009538324721801748,
+        "final": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "linear_acceleration_body_flu_mps2": {
+        "axes": {
+          "x": {
+            "min": -0.05867361715182239,
+            "max": 0.09643514801644512,
+            "peak_abs": 0.09643514801644512,
+            "rms": 0.011879903530648571
+          },
+          "y": {
+            "min": -0.22474712026504087,
+            "max": 0.2222094350398292,
+            "peak_abs": 0.22474712026504087,
+            "rms": 0.019429744948215463
+          },
+          "z": {
+            "min": -0.0819431919848892,
+            "max": 0.09803261771905447,
+            "peak_abs": 0.09803261771905447,
+            "rms": 0.019654890857662234
+          }
+        },
+        "norm_rms": 0.030082583520649193,
+        "norm_p95": 0.042424586279952894,
+        "norm_max": 0.24059013834346124,
+        "final": [
+          0.0024043711283389044,
+          -0.00620976637647308,
+          0.09672750939867214
+        ]
+      },
+      "gyro_flu_rad_s": {
+        "axes": {
+          "x": {
+            "min": -0.002351141534745693,
+            "max": 0.009268837980926037,
+            "peak_abs": 0.009268837980926037,
+            "rms": 0.0007719908143052738
+          },
+          "y": {
+            "min": -0.004241136834025383,
+            "max": 0.007398935500532389,
+            "peak_abs": 0.007398935500532389,
+            "rms": 0.0008517520090470166
+          },
+          "z": {
+            "min": -0.28566133975982666,
+            "max": 0.013964039273560047,
+            "peak_abs": 0.28566133975982666,
+            "rms": 0.01955450999034844
+          }
+        },
+        "norm_rms": 0.01958826976189894,
+        "norm_p95": 0.012785630548711407,
+        "norm_max": 0.2858317264511876,
+        "final": [
+          0.0011914235074073076,
+          0.0012986230431124568,
+          -0.0002354184543946758
+        ]
+      },
+      "gravity_body_flu_unit": {
+        "axes": {
+          "x": {
+            "min": 0.003442728610435692,
+            "max": 0.004698536766053937,
+            "peak_abs": 0.004698536766053937,
+            "rms": 0.0038045398698735703
+          },
+          "y": {
+            "min": 0.013938131754410256,
+            "max": 0.015101166434317713,
+            "peak_abs": 0.015101166434317713,
+            "rms": 0.01458890513808878
+          },
+          "z": {
+            "min": -0.9998964872319264,
+            "max": -0.9998788377927292,
+            "peak_abs": 0.9998964872319264,
+            "rms": 0.9998863382021224
+          }
+        },
+        "norm_rms": 1.0,
+        "norm_p95": 1.0,
+        "norm_max": 1.0000000000000002,
+        "final": [
+          0.003776838172859607,
+          0.015101166434317713,
+          -0.9998788377927292
+        ]
+      },
+      "gravity_final_change_deg": 0.042421672055408,
+      "gravity_max_change_deg": 0.06340365520449598,
+      "heading_unwrapped_change_deg": -3.0909884485109305,
+      "zupt_count_delta": 1,
+      "final_stationary": true,
+      "final_stationary_elapsed_s": 13.300012593000247,
+      "final_policy_data_ready": true,
+      "final_velocity_valid": true,
+      "final_calibrated": true,
+      "final_velocity_norm_mps": 0.0,
+      "health_counter_deltas": {
+        "serial_error_count": 0,
+        "parse_error_count": 0,
+        "frame_error_count": 0,
+        "discarded_byte_count": 3558,
+        "imu_gap_over_timeout_count": 0,
+        "ahrs_gap_over_timeout_count": 0,
+        "velocity_dt_reject_count": 0,
+        "timestamp_stall_count": 0
+      },
+      "last_error": null,
+      "velocity_estimator_error": null,
+      "assessment": "observed",
+      "provisional_assessment": "observed",
+      "validity_reasons": []
+    }
+  ],
+  "initial_diagnostics": {
+    "running": true,
+    "stop_requested": false,
+    "port": "/dev/ttyUSB0",
+    "baudrate": 921600,
+    "data_timeout_s": 0.1,
+    "output_frame": "FLU (x forward, y left, z up)",
+    "strict_policy_health": true,
+    "last_error": null,
+    "serial_error_count": 0,
+    "parse_error_count": 0,
+    "frame_error_count": 0,
+    "discarded_byte_count": 0,
+    "ground_candidate_count": 0,
+    "unsupported_packet_count": 0,
+    "imu_packet_count": 0,
+    "ahrs_packet_count": 0,
+    "insgps_packet_count": 0,
+    "geodetic_packet_count": 0,
+    "system_state_packet_count": 0,
+    "ground_packet_count": 0,
+    "imu_fresh": false,
+    "ahrs_fresh": false,
+    "insgps_fresh": false,
+    "policy_data_ready": false,
+    "velocity_available": false,
+    "velocity_source": "integrated_imu",
+    "velocity_world": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_velocity_body": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_acceleration": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_acceleration_body": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_acceleration_world": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "calibrated": false,
+    "velocity_valid": false,
+    "stationary": false,
+    "stationary_elapsed_s": 0.0,
+    "calibration_sample_count": 0,
+    "accelerometer_rest_sign": 0,
+    "accel_bias_flu": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "gyro_bias_flu": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "velocity_dt_s": 0.0,
+    "velocity_host_dt_s": 0.0,
+    "velocity_dt_source": "vendor_timestamp_word0_us",
+    "velocity_dt_reject_count": 0,
+    "imu_timestamp_us": null,
+    "timestamp_stall_count": 0,
+    "timestamp_stall_consecutive": 0,
+    "timestamp_stall_limit": 3,
+    "zupt_count": 0,
+    "velocity_estimator_error": null,
+    "gravity_available": false,
+    "crc_validation_supported": false,
+    "crc_error_count": 0,
+    "crc_note": "vendor demo supplies no CRC algorithms/coverage",
+    "last_headers": {},
+    "imu_age_s": null,
+    "ahrs_age_s": null,
+    "insgps_age_s": null,
+    "geodetic_age_s": null,
+    "imu_last_interarrival_s": null,
+    "imu_max_interarrival_s": null,
+    "imu_gap_over_timeout_count": 0,
+    "ahrs_last_interarrival_s": null,
+    "ahrs_max_interarrival_s": null,
+    "ahrs_gap_over_timeout_count": 0,
+    "insgps_last_interarrival_s": null,
+    "insgps_max_interarrival_s": null,
+    "insgps_gap_over_timeout_count": 0
+  },
+  "final_diagnostics": {
+    "running": true,
+    "stop_requested": false,
+    "port": "/dev/ttyUSB0",
+    "baudrate": 921600,
+    "data_timeout_s": 0.1,
+    "output_frame": "FLU (x forward, y left, z up)",
+    "strict_policy_health": true,
+    "last_error": null,
+    "serial_error_count": 0,
+    "parse_error_count": 0,
+    "frame_error_count": 0,
+    "discarded_byte_count": 46448,
+    "ground_candidate_count": 206,
+    "unsupported_packet_count": 0,
+    "imu_packet_count": 20649,
+    "ahrs_packet_count": 20649,
+    "insgps_packet_count": 0,
+    "geodetic_packet_count": 0,
+    "system_state_packet_count": 0,
+    "ground_packet_count": 0,
+    "imu_fresh": true,
+    "ahrs_fresh": true,
+    "insgps_fresh": false,
+    "policy_data_ready": true,
+    "velocity_available": true,
+    "velocity_source": "integrated_imu",
+    "velocity_world": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_velocity_body": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "linear_acceleration": [
+      0.0039416358457801115,
+      0.016564686878375534,
+      0.03267411997625125
+    ],
+    "linear_acceleration_body": [
+      0.0039416358457801115,
+      0.016564686878375534,
+      0.03267411997625125
+    ],
+    "linear_acceleration_world": [
+      0.0025912725605884168,
+      0.017340993482396642,
+      0.03240522662013097
+    ],
+    "calibrated": true,
+    "velocity_valid": true,
+    "stationary": true,
+    "stationary_elapsed_s": 13.391334820999873,
+    "calibration_sample_count": 101,
+    "accelerometer_rest_sign": -1,
+    "accel_bias_flu": [
+      -0.008787795048927483,
+      0.0005888105690307883,
+      0.008730539181312624
+    ],
+    "gyro_bias_flu": [
+      0.0005923517076166043,
+      0.0005661862797021986,
+      9.110509732762343e-06
+    ],
+    "velocity_dt_s": 0.01,
+    "velocity_host_dt_s": 0.011340176999510732,
+    "velocity_dt_source": "vendor_timestamp_word0_us",
+    "velocity_dt_reject_count": 0,
+    "imu_timestamp_us": 1842356772,
+    "timestamp_stall_count": 0,
+    "timestamp_stall_consecutive": 0,
+    "timestamp_stall_limit": 3,
+    "zupt_count": 58,
+    "velocity_estimator_error": null,
+    "gravity_available": true,
+    "crc_validation_supported": false,
+    "crc_error_count": 0,
+    "crc_note": "vendor demo supplies no CRC algorithms/coverage",
+    "last_headers": {
+      "65": {
+        "type": 65,
+        "length": 48,
+        "sequence": 212,
+        "crc8": 226,
+        "crc16_high": 59,
+        "crc16_low": 185
+      },
+      "64": {
+        "type": 64,
+        "length": 56,
+        "sequence": 213,
+        "crc8": 97,
+        "crc16_high": 130,
+        "crc16_low": 97
+      }
+    },
+    "imu_age_s": 0.003956184999879042,
+    "ahrs_age_s": 0.006466372999966552,
+    "insgps_age_s": null,
+    "geodetic_age_s": null,
+    "imu_last_interarrival_s": 0.011340176999510732,
+    "imu_max_interarrival_s": 0.027695130000211066,
+    "imu_gap_over_timeout_count": 0,
+    "ahrs_last_interarrival_s": 0.009806673999264603,
+    "ahrs_max_interarrival_s": 0.027784203000010166,
+    "ahrs_gap_over_timeout_count": 0,
+    "insgps_last_interarrival_s": null,
+    "insgps_max_interarrival_s": null,
+    "insgps_gap_over_timeout_count": 0
+  },
+  "error": null
+}

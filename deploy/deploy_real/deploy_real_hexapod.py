@@ -5,7 +5,7 @@ import csv
 import os
 from datetime import datetime
 
-from imu_sdk_deta40.imu_sdk import IMUSDK
+from imu_sdk_new.imu_sdk import IMUSDK
 
 from common.command_helper_hexapod import create_zero_cmd,create_damping_cmd
 
@@ -84,7 +84,7 @@ class Controller:
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
 
-        self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
+        self.imu = IMUSDK(port='/dev/ttyUSB0', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
@@ -119,13 +119,13 @@ class Controller:
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             elif motor_id in group2:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             elif motor_id in group3:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             else:
                 unknown_motor_ids.append(motor_id)
 
