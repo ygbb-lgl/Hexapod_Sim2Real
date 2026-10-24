@@ -1,12 +1,8 @@
-"""Real-robot deployment for the recurrent single-expert Estimate policy."""
-
 import numpy as np
 import time
 import csv
 import os
 from datetime import datetime
-from collections import deque
-from typing import Optional
 
 from imu_sdk_deta40.imu_sdk import IMUSDK
 
@@ -23,25 +19,16 @@ from hexapod_tethered_utils.cable_tension_sensor import CableTensionSensor
 from hexapod_tethered_utils.cable_end_pitch_sensor import CableEndPitchSensor
 from hexapod_tethered_utils.cable_arm_yaw_sensor import CableArmYawSensor
 
-from hexapod_tethered_utils.moe_policy import (
-    ACTION_DIM,
-    STATE_DIM,
-    build_deployable_state,
-    load_moe_policy,
-    unit_direction_from_yaw_pitch,
+from hexapod_tethered_estimate_utils import (
+    HexapodTetheredEstimatePolicy,
+    build_observation,
+    tether_direction_from_yaw_pitch,
 )
 
+import config_hexapod_tethered_estimate
 
-import config_hexapod_tethered
+from config_hexapod_tethered_estimate import Config
 
-from config_hexapod_tethered_estimate import EstimateConfig
-
-ESTIMATE_NUM_EXPERTS = 1
-
-# Closed-loop recurrent soft start.  Set to 0.0 for a direct cold-start A/B
-# comparison.  Both GRUs still consume real observations throughout the ramp.
-# 热启动时间，单位秒，默认1秒
-POLICY_SOFT_START_DURATION_S = 1.0
 
 # 记录数据
 class TensionTrainingCsvLogger:
@@ -161,205 +148,8 @@ class TensionTrainingCsvLogger:
             self._file = None
 
 
-# 实时现实画面
-class RealTimePlotter:
-    def __init__(
-        self,
-        history_seconds: float = 60.0,
-        control_dt: float = 0.02,
-        plot_every_n: int = 5,
-        enabled: bool = True,
-        csv_enabled: bool = True,
-        csv_path: Optional[str] = None,
-        csv_flush_every_n: int = 50,
-    ) -> None:
-        # Plotting and CSV logging are decoupled: plotting may be disabled due to
-        # missing GUI backend, but CSV logging should still work.
-        self.enabled = bool(enabled)
-        self.csv_enabled = bool(csv_enabled)
-        self.control_dt = float(control_dt)
-        self.plot_every_n = max(int(plot_every_n), 1)
-        self._csv_flush_every_n = max(int(csv_flush_every_n), 1)
-
-        self._step = 0
-        self._ok = False
-        self._csv_ok = False
-        self._csv_file = None
-        self._csv_writer = None
-
-        self._maxlen = max(int(history_seconds / max(self.control_dt, 1e-6)), 10)
-        self._t = deque(maxlen=self._maxlen)
-        self._tension_meas = deque(maxlen=self._maxlen)
-        self._tension_ref = deque(maxlen=self._maxlen)
-        self._yaw = deque(maxlen=self._maxlen)
-        self._imu_vx = deque(maxlen=self._maxlen)
-        self._spool_cmd_torque = deque(maxlen=self._maxlen)
-        self._spool_torque_buf = deque(maxlen=self._maxlen)
-
-        # CSV logger (best-effort)
-        if self.csv_enabled:
-            try:
-                if csv_path is None:
-                    csv_path = os.path.join(os.getcwd(), "plot_data.csv")
-                os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
-                self._csv_file = open(
-                    csv_path, "w", newline="", buffering=1024 * 1024
-                )
-                self._csv_writer = csv.writer(self._csv_file)
-                self._csv_writer.writerow(
-                    [
-                        "t_s",
-                        "tension_value",
-                        "target_tension",
-                        "yaw_differ_value",
-                        "imu_vx",
-                        "spool_torque_cmd",
-                        "spool_torque_buffer",
-                    ]
-                )
-                self._csv_ok = True
-                print(f"[PlotCSV] logging enabled: {csv_path}")
-            except Exception as e:
-                self._csv_ok = False
-                self.csv_enabled = False
-                print(f"[PlotCSV] disabled due to error: {e}")
-
-        if not self.enabled:
-            return
-
-        try:
-            import matplotlib.pyplot as plt  # type: ignore
-
-            self._plt = plt
-            self._plt.ion()
-
-            # 创建4行1列的子图
-            self._fig, self._axs = self._plt.subplots(
-                4, 1, sharex=True, figsize=(10, 8), constrained_layout=True
-            )
-            self._fig.canvas.manager.set_window_title("Hexapod Real-time Debug")
-
-            # 1) tension
-            ax = self._axs[0]
-            (self._ln_tension_meas,) = ax.plot([], [], label="tension_value")
-            (self._ln_tension_ref,) = ax.plot([], [], label="target_tension")
-            ax.set_ylabel("Tension")
-            ax.grid(True)
-            ax.legend(loc="upper right")
-
-            # 2) yaw_differ
-            ax = self._axs[1]
-            (self._ln_yaw,) = ax.plot([], [], label="yaw_differ_value")
-            ax.set_ylabel("Yaw (rad)")
-            ax.grid(True)
-            ax.legend(loc="upper right")
-
-            # 3) imu vx
-            ax = self._axs[2]
-            (self._ln_imu_vx,) = ax.plot([], [], label="imu_vx")
-            ax.set_ylabel("IMU vx (m/s)")
-            ax.grid(True)
-            ax.legend(loc="upper right")
-
-            # 4) spool cmd torque + buffer torque
-            ax = self._axs[3]
-            (self._ln_spool_cmd,) = ax.plot([], [], label="spool_torque_cmd")
-            (self._ln_spool_torque_buf,) = ax.plot([], [], label="spool_torque_buffer")
-            ax.set_ylabel("Spool Torque (Nm)")
-            ax.set_xlabel("Time (s)")
-            ax.grid(True)
-            ax.legend(loc="upper right")
-
-            self._ok = True
-        except Exception as e:
-            self._ok = False
-            print(f"[Plot] disabled due to error: {e}")
-
-    def close(self) -> None:
-        if self._csv_file is not None:
-            try:
-                self._csv_file.close()
-            except Exception:
-                pass
-            self._csv_file = None
-            self._csv_writer = None
-            self._csv_ok = False
-
-    def update(
-        self,
-        t_s: float,
-        tension_value: float,
-        target_tension: float,
-        yaw_differ_value: float,
-        imu_vx: float,
-        spool_torque_cmd: float,
-        spool_torque_buffer: float,
-    ) -> None:
-        self._step += 1
-
-        # Always append to CSV if enabled, even when plotting is disabled.
-        if self.csv_enabled and self._csv_ok and self._csv_writer is not None:
-            try:
-                self._csv_writer.writerow(
-                    [
-                        float(t_s),
-                        float(tension_value),
-                        float(target_tension),
-                        float(yaw_differ_value),
-                        float(imu_vx),
-                        float(spool_torque_cmd),
-                        float(spool_torque_buffer),
-                    ]
-                )
-                if (self._step % self._csv_flush_every_n) == 0 and self._csv_file is not None:
-                    self._csv_file.flush()
-            except Exception:
-                # Do not break the control loop due to IO issues.
-                self.csv_enabled = False
-                self._csv_ok = False
-
-        if not self.enabled or not self._ok:
-            return
-
-        self._t.append(float(t_s))
-        self._tension_meas.append(float(tension_value))
-        self._tension_ref.append(float(target_tension))
-        self._yaw.append(float(yaw_differ_value))
-        self._imu_vx.append(float(imu_vx))
-        self._spool_cmd_torque.append(float(spool_torque_cmd))
-        self._spool_torque_buf.append(float(spool_torque_buffer))
-
-        if (self._step % self.plot_every_n) != 0:
-            return
-
-        t = np.asarray(self._t, dtype=np.float32)
-        if t.size < 2:
-            return
-
-        # 真正的图像数据传入接口
-        self._ln_tension_meas.set_data(t, np.asarray(self._tension_meas, dtype=np.float32))
-        self._ln_tension_ref.set_data(t, np.asarray(self._tension_ref, dtype=np.float32))
-        self._ln_yaw.set_data(t, np.asarray(self._yaw, dtype=np.float32))
-        self._ln_imu_vx.set_data(t, np.asarray(self._imu_vx, dtype=np.float32))
-        self._ln_spool_cmd.set_data(t, np.asarray(self._spool_cmd_torque, dtype=np.float32))
-        self._ln_spool_torque_buf.set_data(t, np.asarray(self._spool_torque_buf, dtype=np.float32))
-
-        for ax in self._axs:
-            ax.relim()
-            ax.autoscale_view(scalex=True, scaley=True)
-
-        try:
-            self._fig.canvas.draw_idle()
-            self._fig.canvas.flush_events()
-            self._plt.pause(0.001)
-        except Exception:
-            # If GUI backend gets into a bad state, avoid blocking control loop.
-            self.enabled = False
-            print("[Plot] disabled (runtime GUI error)")
-
-
 class Controller:
-    def __init__(self, config: EstimateConfig) -> None:
+    def __init__(self,config:Config) -> None:
         self.config = config
         #self.remote_controller = RemoteController()
 
@@ -367,30 +157,23 @@ class Controller:
         self.gamepad = None
         if Gamepad is not None:
             try:
-                self.gamepad = Gamepad(
-                    vel_scale_x=float(config.command_scale[0]),
-                    vel_scale_y=float(config.command_scale[1]),
-                    vel_scale_rot=float(config.command_scale[2]),
-                )
+                self.gamepad = Gamepad()
             except Exception as e:
                 self.gamepad = None
                 print(f"[gamepad] disabled due to error: {e}")
 
+        self.ang_vel_scale = config.ang_vel
+        self.dof_pos_scale = config.dof_pos
+        self.dof_vel_scale = config.dof_vel
+        self.lin_vel_scale = config.lin_vel
+
         # Policy-side per-joint gains (indexed by policy_idx 0..17)
         self._kp_policy, self._kd_policy = self._build_policy_joint_gains()
 
-        # The dedicated Estimate YAML accepts either a raw RSL-RL checkpoint
-        # or the recurrent TorchScript exported by the Estimate sim2sim script.
-        self.policy_path = config.policy_path
-        if int(config.num_experts) != ESTIMATE_NUM_EXPERTS:
-            raise ValueError(
-                "Estimate deployment requires num_experts="
-                f"{ESTIMATE_NUM_EXPERTS}, got {config.num_experts}"
-            )
-        self.policy = load_moe_policy(
-            self.policy_path,
+        self.policy = HexapodTetheredEstimatePolicy(
+            config.policy_path,
             device=config.policy_device,
-            num_experts=ESTIMATE_NUM_EXPERTS,
+            action_clip=config.policy_action_clip,
         )
         # 预热网络，减少第一次推理的延迟
         self._warm_up()
@@ -399,34 +182,11 @@ class Controller:
         self.qj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.dqj = np.zeros(config.num_leggeds_actions,dtype=np.float32)
         self.spool_q = np.zeros(1, dtype=np.float32)
-        if int(config.num_actions) != ACTION_DIM:
-            raise ValueError(
-                f"Estimate policy requires num_actions={ACTION_DIM}, "
-                f"got {config.num_actions}"
-            )
-        self.action = np.zeros(ACTION_DIM,dtype=np.float32)
+        self.action = np.zeros(config.num_actions,dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
-        self.obs = np.zeros(STATE_DIM,dtype=np.float32)
-        if int(config.num_obs) != STATE_DIM:
-            raise ValueError(
-                f"Estimate policy requires num_obs={STATE_DIM}, "
-                f"got {config.num_obs}"
-            )
+        self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
-        self._last_tether_yaw = 0.0
-        self._last_tether_pitch = 0.0
         self.counter = 0
-        self._soft_start_steps = max(
-            0,
-            int(round(POLICY_SOFT_START_DURATION_S / float(config.control_dt))),
-        )
-        self._soft_start_step = 0
-        if self._soft_start_steps > 0:
-            print(
-                "[Estimate] recurrent soft start: "
-                f"{POLICY_SOFT_START_DURATION_S:.3f}s "
-                f"({self._soft_start_steps} control frames)"
-            )
         # Schedule observation start times, rather than sleeping at the end of
         # run().  End-of-cycle sleeping does not account for work performed by
         # the outer button/state loop and produced ~22 ms periods for a 20 ms
@@ -457,8 +217,8 @@ class Controller:
         self.log_dir = os.path.join(os.getcwd(), "motor_logs", f'motor_logs_{timestamp}')
         os.makedirs(self.log_dir, exist_ok=True)
 
-        # Predictor-training data is kept separately from plotting/motor debug
-        # logs.  One process invocation is one independent trajectory.
+        # Predictor-training data is kept separately from motor debug logs.
+        # One process invocation is one independent trajectory.
         self.trajectory_id = f"hexapod_{timestamp}"
         pre_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pre_data")
         self.pre_tension_logger = TensionTrainingCsvLogger(
@@ -471,12 +231,6 @@ class Controller:
         # overwritten until the complete pre-action row has been written.
         self._previous_spool_torque_command_nm = 0.0
 
-        # Do not even construct/update RealTimePlotter in this timing-sensitive
-        # collector.  Matplotlib redraws previously blocked the control thread
-        # for 100--150 ms every five samples.  Training and motor CSV logging
-        # below remain enabled; plotting must be done offline after collection.
-        self.plotter = None
-        
         # Open 18 CSV files for logging motor data
         self.log_files = []
         self.log_writers = []
@@ -494,7 +248,7 @@ class Controller:
         # 这里的 'enp86s0' 就是网口名；如果你要换网口，改成你的实际 NIC。
         # Spool (cable) motor is fixed in this project:
         # motor_id=19 on slave_idx=3 passage=1, direction=+1.
-        self.robot = RL_Real_PySOEM_WithSpoolTorque('enp86s0')
+        self.robot = RL_Real_PySOEM_WithSpoolTorque('enp109s0')
         self.robot_start = self.robot.start()
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
@@ -549,11 +303,6 @@ class Controller:
         for log_file in getattr(self, "log_files", []):
             try:
                 log_file.close()
-            except Exception:
-                pass
-        if getattr(self, "plotter", None) is not None:
-            try:
-                self.plotter.close()
             except Exception:
                 pass
         if getattr(self, "pre_tension_logger", None) is not None:
@@ -637,9 +386,6 @@ class Controller:
         self.timing_warning_message = None
         self._timing_warning_sequence = 0
         self._timing_warning_reported_sequence = 0
-        self.action.fill(0.0)
-        self.policy.reset()
-        self._soft_start_step = 0
         print(f"[PreTensionCSV] new trajectory after pause: {self.trajectory_id}")
 
     def _build_policy_joint_gains(self):
@@ -662,13 +408,13 @@ class Controller:
             motor_id = int(self.config.joint2motor_idx[policy_idx])
             if motor_id in group1:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             elif motor_id in group2:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             elif motor_id in group3:
                 kp[policy_idx] = 100.0
-                kd[policy_idx] = 1.2
+                kd[policy_idx] = 3.0
             else:
                 unknown_motor_ids.append(motor_id)
 
@@ -680,14 +426,13 @@ class Controller:
         return kp, kd
 
     def _warm_up(self):
-        obs = np.zeros(STATE_DIM, dtype=np.float32)
-        for _ in range(10):
-            _ = self.policy(obs)
-        # Warm-up history must never leak into the real control episode.
+        self.policy.warm_up()
+        print('Network has been warmed up.')
+
+    def reset_policy_state(self):
+        """Clear GRU history and last-action state before a policy run."""
         self.policy.reset()
-        print(
-            f'Network has been warmed up ({STATE_DIM}-D recurrent Estimate).'
-        )
+        self.action.fill(0.0)
 
 
     # 零力矩模式
@@ -755,6 +500,7 @@ class Controller:
             if self.gamepad.get_button_lb() == 1:
                 return False
             if self.gamepad.get_button_a() == 1:
+                self.reset_policy_state()
                 return True
 
             for i in range(18):
@@ -794,125 +540,21 @@ class Controller:
     def print_pitch_angle(self):
         pitch_value = self.pitch_sensor.get_angle()
         if pitch_value is not None:
-            print(f"Pitch Angle: {pitch_value:.3f} rad")
+            print(f"Pitch Angle: {pitch_value:.3f} degrees")
         else:
             print("No pitch angle data available.")
 
-    def print_yaw_differ_angle(self):
-        self.spool_q[0] = self.robot.spool_state_buffer.position[0]
-        yaw_differ_value = self.yaw_sensor.get_yaw_angle(motor_angle_deg=self.spool_q[0], yaw_value=self.yaw_sensor.get_angle(), offset_deg=self.config.offset_deg)
-        if yaw_differ_value is not None:
-            print(self.spool_q[0])
-            print(self.yaw_sensor.get_angle())
-            print(f"Yaw Differ Angle: {yaw_differ_value:.3f} rad")
+    def print_yaw_angle(self):
+        yaw_value = self.yaw_sensor.get_angle()
+        tether_yaw = self.yaw_sensor.get_body_fixed_yaw(
+            yaw_value=yaw_value,
+            offset_rad=self.config.offset_deg,
+        )
+        if yaw_value is not None and tether_yaw is not None:
+            print(f"Yaw Sensor: {float(yaw_value):.3f} deg")
+            print(f"Policy Tether Yaw: {tether_yaw:.3f} rad")
         else:
-            print("No yaw differ angle data available.")
-
-    def _read_imu_observation(self):
-        """Return deployable IMU fields plus diagnostic-only motion data."""
-        velocity = self.imu.get_linear_velocity()
-        imu_data = self.imu.get_imu_data()
-        gravity = self.imu.get_gravity_acceleration()
-        # Linear velocity is only retained for existing CSV diagnostics.  It
-        # must not invalidate gyro/gravity, because the Estimate estimator exists
-        # precisely to infer velocity when it is not directly measurable.
-        if imu_data is None or gravity is None:
-            return (
-                np.zeros(3, dtype=np.float32),
-                np.zeros(3, dtype=np.float32),
-                np.array([0.0, 0.0, -1.0], dtype=np.float32),
-                np.zeros(3, dtype=np.float32),
-                False,
-            )
-
-        velocity_valid = velocity is not None
-        if velocity_valid:
-            linear_velocity = np.asarray(velocity, dtype=np.float32).reshape(3)
-            velocity_valid = bool(np.all(np.isfinite(linear_velocity)))
-        if not velocity_valid:
-            linear_velocity = np.zeros(3, dtype=np.float32)
-        angular_velocity = np.asarray(
-            [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']],
-            dtype=np.float32,
-        )
-        gravity_body = np.asarray(gravity, dtype=np.float32).reshape(3)
-        linear_acceleration = np.asarray(
-            [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']],
-            dtype=np.float32,
-        )
-        valid = bool(
-            np.all(np.isfinite(angular_velocity))
-            and np.all(np.isfinite(gravity_body))
-            and np.all(np.isfinite(linear_acceleration))
-        )
-        gravity_norm = float(np.linalg.norm(gravity_body))
-        valid = valid and gravity_norm > 1e-6
-        if not valid:
-            return (
-                np.zeros(3, dtype=np.float32),
-                np.zeros(3, dtype=np.float32),
-                np.array([0.0, 0.0, -1.0], dtype=np.float32),
-                np.zeros(3, dtype=np.float32),
-                False,
-            )
-        return (
-            linear_velocity,
-            angular_velocity,
-            gravity_body / gravity_norm,
-            linear_acceleration,
-            bool(velocity_valid),
-        )
-
-    def _read_tether_observation(self):
-        """Read tension/yaw/pitch and reconstruct the trunk-frame unit vector."""
-        tension = self.tension_sensor.get_cable_tension()
-        tension_valid = tension is not None and np.isfinite(tension)
-        tension = max(float(tension), 0.0) if tension_valid else 0.0
-
-        pitch = self.pitch_sensor.get_angle()  # calibrated radians
-        if pitch is not None and np.isfinite(pitch):
-            self._last_tether_pitch = float(pitch)
-
-        yaw_raw_deg = self.yaw_sensor.get_angle()
-        yaw = self.yaw_sensor.get_yaw_angle(
-            motor_angle_deg=float(self.spool_q[0]),
-            yaw_value=yaw_raw_deg,
-            offset_deg=self.config.offset_deg,
-        )
-        if yaw is not None and np.isfinite(yaw):
-            self._last_tether_yaw = float(yaw)
-
-        direction = unit_direction_from_yaw_pitch(
-            self._last_tether_yaw, self._last_tether_pitch
-        )
-        return (
-            tension,
-            bool(tension_valid),
-            self._last_tether_yaw,
-            self._last_tether_pitch,
-            direction,
-        )
-
-    def _build_estimate_observation(
-        self,
-        *,
-        angular_velocity: np.ndarray,
-        gravity_body: np.ndarray,
-        tension: float,
-        tether_direction_body: np.ndarray,
-    ) -> np.ndarray:
-        """Assemble the exact training-time 68-D deployable state."""
-        self.obs = build_deployable_state(
-            gyro=angular_velocity,
-            gravity=gravity_body,
-            leg_joint_position_error=(self.qj - self.config.default_angles),
-            leg_joint_velocity=self.dqj,
-            previous_action=self.action,
-            command=self.cmd,
-            cable_tension=tension,
-            tether_unit_direction_body=tether_direction_body,
-        )
-        return self.obs
+            print("No yaw angle data available.")
 
     def run(self):
         if self.gamepad is None:
@@ -930,66 +572,114 @@ class Controller:
         # Snapshot tau_actual_k before computing/writing the new command u_k.
         # Do not read this shared driver buffer again for the same CSV row.
         spool_torque_actual_pre_action = float(2.1 * self.robot.spool_state_buffer.torque[0])
+        vel = self.imu.get_linear_velocity()
+        imu_data = self.imu.get_imu_data()
+        grav = self.imu.get_gravity_acceleration()
 
-        (
-            linvel,
-            ang_vel,
-            gravity_orientation,
-            body_linear_acceleration,
-            imu_valid,
-        ) = self._read_imu_observation()
+        tension_value = self.tension_sensor.get_cable_tension()
+        tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
+        if not tension_sensor_valid:
+            tension_value = 0.0
+            
+        pitch_value = self.pitch_sensor.get_angle()
+        if pitch_value is None or not np.isfinite(pitch_value):
+            pitch_value = 0.0
+            
+        # The yaw encoder is fixed to the trunk, so its degree reading directly
+        # measures tether yaw relative to the body.  Do not combine it with the
+        # spool motor position as the old differential mechanism did.
+        yaw_value = self.yaw_sensor.get_angle()
+        tether_yaw = self.yaw_sensor.get_body_fixed_yaw(
+            yaw_value=yaw_value,
+            offset_rad=self.config.offset_deg,
+        )
+        if tether_yaw is None or not np.isfinite(tether_yaw):
+            tether_yaw = 0.0
+        tether_direction_body = tether_direction_from_yaw_pitch(
+            float(tether_yaw), float(pitch_value)
+        )
 
-        (
-            tension_value,
-            tension_sensor_valid,
-            yaw_differ_value,
-            pitch_value,
-            tether_direction_body,
-        ) = self._read_tether_observation()
+        tether_direction_body = tether_direction_from_yaw_pitch(
+            float(0.0), float(0.0)
+        )
+        # Integrated linear velocity is retained only for CSV logging. A
+        # missing/invalid estimate must not suppress the GRU's gyro or gravity
+        # inputs, because replacing that velocity is the estimator's purpose.
+        linvel = np.zeros(3, dtype=np.float32)
+        velocity_valid = False
+        if vel is not None:
+            measured_linvel = np.asarray(vel, dtype=np.float32)
+            if measured_linvel.shape == (3,) and np.all(np.isfinite(measured_linvel)):
+                linvel = measured_linvel
+                velocity_valid = True
 
-        # Gamepad already applies the physical command range configured in
-        # __init__; do not multiply command_scale a second time.
-        self.cmd[:] = np.asarray(self.gamepad.get_command(), dtype=np.float32)
+        if imu_data is None or grav is None:
+            # 如果没有 IMU 数据，使用全 0
+            ang_vel = np.zeros(3, dtype=np.float32)
+            gravity_orientation = np.array([0.0, 0.0, -1.0], dtype=np.float32)  # 假设重力向下
+            body_linear_acceleration = np.zeros(3, dtype=np.float32)
+            imu_signal_valid = False
+        else:
+            ang_vel = np.asarray(
+                [imu_data['gyro_x'], imu_data['gyro_y'], imu_data['gyro_z']], dtype=np.float32
+            )
+            gravity_orientation = np.asarray(grav, dtype=np.float32)
+            body_linear_acceleration = np.asarray(
+                [imu_data['acc_x'], imu_data['acc_y'], imu_data['acc_z']], dtype=np.float32
+            )
+            imu_signal_valid = bool(
+                np.all(np.isfinite(ang_vel))
+                and np.all(np.isfinite(gravity_orientation))
+                and np.all(np.isfinite(body_linear_acceleration))
+            )
+
+            # Match sim2sim convention: gravity is a unit vector in body frame.
+            g_norm = float(np.linalg.norm(gravity_orientation))
+            if g_norm > 1e-6:
+                gravity_orientation = gravity_orientation / g_norm
+
+        imu_valid = bool(imu_signal_valid and velocity_valid)
+
+
+        cmd = self.gamepad.get_command()
         
-        observation = self._build_estimate_observation(
-            angular_velocity=ang_vel,
-            gravity_body=gravity_orientation,
-            tension=tension_value,
-            tether_direction_body=tether_direction_body,
-        )
-        self.action = self.policy(observation).copy()
+        self.cmd[0] = np.float32(cmd[0])
+        self.cmd[1] = np.float32(cmd[1])
+        self.cmd[2] = np.float32(cmd[2])
 
-        # The training wrapper clips the raw 19-D policy action to [-10, 10]
-        # before storing that same value in the next observation.  The cable
-        # actuator's [0, 2] range is applied only when forming its command.
-        self.action[:] = np.clip(
+        qj_obs = self.qj.copy()
+        qj_obs = qj_obs - self.config.default_angles
+        dqj_obs = self.dqj.copy()
+        dqj_obs = dqj_obs 
+
+        tension_value = float(0.0)
+
+        # Exact 68-D training order. Body linear velocity is estimated by the
+        # GRU and therefore remains available only to logging below.
+        self.obs[:] = build_observation(
+            ang_vel * self.ang_vel_scale,
+            gravity_orientation,
+            qj_obs * self.dof_pos_scale,
+            dqj_obs * self.dof_vel_scale,
             self.action,
-            -self.config.policy_action_clip,
-            self.config.policy_action_clip,
+            self.cmd * self.config.command_scale,
+            max(float(tension_value), 0.0),
+            tether_direction_body,
         )
+        self.action = self.policy.predict(self.obs)
 
-        # Advance the recurrent policy with real sensor observations while the
-        # action actually sent to the robot rises smoothly from zero.  Because
-        # self.action stores the blended action, the next observation's
-        # previous_action exactly matches what was executed this frame.
-        if (
-            self._soft_start_steps > 0
-            and self._soft_start_step < self._soft_start_steps
-        ):
-            soft_start_alpha = self._soft_start_step / self._soft_start_steps
-            self.action *= np.float32(soft_start_alpha)
-            self._soft_start_step += 1
+        # The loader applies the policy-wide +/-10 safety clip. Keep the raw
+        # cable action in last_action; clip only the command sent to hardware.
+        self.action[0:18] = np.clip(self.action[0:18], -10.0, 10.0)
+        cable_action = np.clip(
+            self.action[18],
+            self.config.cable_action_range[0],
+            self.config.cable_action_range[1],
+        )
 
         target_dof_pos = self.config.default_angles + self.action[0:18] * self.config.action_scale
         # target_dof_pos = self.config.default_angles
         
-        cable_action = float(
-            np.clip(
-                self.action[18],
-                self.config.cable_action_range[0],
-                self.config.cable_action_range[1],
-            )
-        )
         target_tension = cable_action * self.config.tension_action_scale
 
         for i in range(18):
@@ -1040,12 +730,15 @@ class Controller:
         # Paper-style: feedforward uses IMU speed (already read above).
         # Here we use forward velocity component; adjust to norm(linvel[:2]) if needed.
         spool_torque_cmd,feedback_torque, rff_torque,error_tension = self.tension_torque_controller.step(
-            speed_input=float(self.cmd[0]),
+            speed_input=float(cmd[0]),
             #speed_input=float(linvel[0]),
-            yaw=float(yaw_differ_value),
+            yaw=float(tether_yaw),
             tension_ref=float(target_tension),
             tension_meas=float(tension_value),
         )
+
+        self.robot.spool_command_buffer.target_torque_nm[0] = float(0.0)    
+
         self.robot.spool_command_buffer.target_torque_nm[0] = float(spool_torque_cmd)
         self.robot.spool_state_buffer.torque[0] = float(self.robot.spool_state_buffer.torque[0])  # Ensure torque is updated for next control step
         spool_torque = self.robot.spool_state_buffer.torque[0]
@@ -1065,7 +758,7 @@ class Controller:
             torque_command_issued_nm=float(spool_torque_cmd),
             motor_position_rad=float(self.spool_q[0]),
             force_reference_n=float(target_tension),        
-            velocity_command=self.cmd,
+            velocity_command=self.cmd * self.config.command_scale,
             # Store the physical joint-position increment seen by the actuator,
             # not the raw dimensionless policy output.
             policy_action=self.action[:18] * float(self.config.action_scale),
@@ -1090,10 +783,10 @@ class Controller:
 if __name__ == "__main__":
 
     config_path = (
-        f"{config_hexapod_tethered.ROOT_DIR}/deploy/deploy_real/configs/"
-        "hexapod_tethered_estimate.yaml"
+        f"{config_hexapod_tethered_estimate.ROOT_DIR}/deploy/deploy_real/"
+        "configs/hexapod_tethered_estimate.yaml"
     )
-    config = EstimateConfig(config_path)
+    config = Config(config_path)
 
     # ChannelFactoryInitialize(0, args.net)
 
@@ -1104,7 +797,7 @@ if __name__ == "__main__":
     controller.print_imu_data()
     controller.print_pitch_angle()
 
-    controller.print_yaw_differ_angle()
+    controller.print_yaw_angle()
 
     controller.zero_torque_state()
     enter_policy = controller.move_to_default_pos()

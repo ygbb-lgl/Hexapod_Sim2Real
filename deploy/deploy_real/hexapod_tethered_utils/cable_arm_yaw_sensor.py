@@ -105,6 +105,22 @@ class CableArmYawSensor:
     def _wrap_to_pi(rad: float) -> float:
         """把角度 wrap 到 [-pi, pi) 以避免 0/2pi 越程突变。"""
         return (float(rad) + math.pi) % (2.0 * math.pi) - math.pi
+
+    def get_body_fixed_yaw(self, yaw_value, offset_rad):
+        """返回机身固定编码器测得的绳索相对 yaw，单位为弧度。
+
+        ``yaw_value`` 是 ``get_angle()`` 返回的原始度数。该接口将其
+        转成弧度，
+        先反转编码器方向，再加上 YAML 中标定的零位偏置，
+        最后归一化到 ``[-pi, pi)``。``offset_rad`` 的单位是弧度。
+
+        返回 ``None`` 表示尚未收到有效角度。
+        """
+        if yaw_value is None or not math.isfinite(float(yaw_value)):
+            return None
+        reversed_degrees = (360.0 - float(yaw_value)) % 360.0
+        yaw_radians = math.radians(reversed_degrees)
+        return self._wrap_to_pi(yaw_radians + float(offset_rad))
         
     # 计算 arm 的 yaw 角度
     def get_yaw_angle(self, motor_angle_deg, yaw_value, offset_deg):
@@ -155,9 +171,12 @@ if __name__ == "__main__":
         try:
             while True:
                 ang = sensor.get_angle()
+                yaw = sensor.get_body_fixed_yaw(ang, 5.8008)
                 #differ_angle = sensor.get_yaw_angle(0.44,ang, 5.8008)
-                if ang is not None:
-                    print(f"Arm Yaw Angle = {ang:.4f} 度")          
+                # if ang is not None:
+                #     print(f"Arm Yaw Angle = {ang:.4f} 度")          
+                if yaw is not None:
+                    print(f"Arm Body Fixed Yaw = {yaw:.4f} 弧度")
                 # if differ_angle is not None:
                 #     print(f"Arm differ Yaw Angle = {differ_angle:.4f} 度")
                 time.sleep(0.1)
