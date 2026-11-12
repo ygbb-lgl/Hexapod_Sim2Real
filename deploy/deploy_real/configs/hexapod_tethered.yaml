@@ -117,7 +117,7 @@ ff_max_speed_mps: 1.0
 ff_radius_m: 0.06
 
 Kff_forward: 1.0
-Kff_backward: 0.9
+Kff_backward: 1.0
 
 # 拉力死区
 # tension_deadband: 17.0

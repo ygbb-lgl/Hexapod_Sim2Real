@@ -22,10 +22,10 @@ import torch.nn as nn
 
 # Paste absolute paths here. No command-line arguments are required.
 CHECKPOINT_PATH = Path(
-  "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered_estimate/1023/model_24500.pt"
+  "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered_estimate/slpoe/1021/model_24500.pt"
 )
 POLICY_OUTPUT_PATH = Path(
-  "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered_estimate/1023/policy_24500.pt"
+  "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered_estimate/slpoe/1021/policy_24500.pt"
 )
 
 OBS_NORMALIZATION_EPS = 1.0e-2

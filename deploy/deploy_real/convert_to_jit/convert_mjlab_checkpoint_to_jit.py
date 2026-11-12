@@ -23,9 +23,9 @@ from torch import nn
 # ---------------------------------------------------------------------------
 # Absolute input/output paths
 # ---------------------------------------------------------------------------
-CHECKPOINT_PATH = Path("/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/1014/model_9500.pt")
+CHECKPOINT_PATH = Path("/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/1015_slope/model_9500.pt")
 POLICY_OUTPUT_PATH = Path(
-    "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/1014/policy_9500.pt"
+    "/home/lgl/Hexapod_Sim2Real/deploy/pre_train/hexapod_tethered/1015_slope/policy_9500.pt"
 )
 
 # MJLab uses rsl-rl's EmpiricalNormalization. In rsl-rl 5.5.1, its
