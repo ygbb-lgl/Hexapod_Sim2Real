@@ -1,0 +1,5 @@
+run_finished_at,target_torque_nm,preload_torque_nm,stabilization_time_s,sample_rate_hz,sample_count,record_duration_s,mean_cmd_torque_nm,mean_actual_torque_nm,mean_force_x_n,mean_force_y_n,mean_force_z_n,mean_force_z_pressure_n,mean_force_norm_n,mean_pitch_rad,mean_pitch_deg,mean_sin_pitch,mean_cos_pitch,raw_csv
+2026-11-13T20:57:48,23.000000000,6.000000000,5.000000,50.000000,771,15.420177,23.000000000,22.972722381,-13.849839768,6.379903354,-565.707292015,565.707292015,565.912775569,-0.003137540,-0.179767789,-0.003137528,0.999993248,23Nm_20261113_205724_090660.csv
+
+
+225

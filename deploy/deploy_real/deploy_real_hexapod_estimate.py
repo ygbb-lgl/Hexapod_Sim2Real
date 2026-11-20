@@ -58,6 +58,8 @@ class Controller:
         self.qj = np.zeros(config.num_actions,dtype=np.float32)
         self.dqj = np.zeros(config.num_actions,dtype=np.float32)
         self.action = np.zeros(config.num_actions,dtype=np.float32)
+        # Latest estimator output [vx, vy, vz] in the body frame, in m/s.
+        self.estimated_lin_vel_body = np.zeros(3, dtype=np.float32)
         self.target_dof_pos = config.default_angles.copy()
         self.obs = np.zeros(config.num_obs,dtype=np.float32)
         self.cmd = np.array([0, 0, 0],dtype=np.float32)
@@ -88,7 +90,7 @@ class Controller:
         if not self.robot_start:
             print("[WARNING] Robot start failed. Will use zero data.")
 
-        self.imu = IMUSDK(port='/dev/ttyUSB0', baudrate=921600)
+        self.imu = IMUSDK(port='/dev/ttyUSB_imu', baudrate=921600)
         self.imu_started = self.imu.start()
         if not self.imu_started:
             print("[WARNING] IMU start failed. Will use zero data.")
@@ -150,6 +152,7 @@ class Controller:
         """Clear GRU history and the previous action when starting a policy run."""
         self.policy.reset()
         self.action.fill(0.0)
+        self.estimated_lin_vel_body.fill(0.0)
 
 
     # 零力矩模式
@@ -286,6 +289,16 @@ class Controller:
             self.cmd * self.config.command_scale,
         )
         self.action = self.policy.predict(self.obs)
+        estimated_state = self.policy.last_estimate
+        if estimated_state is None:
+            raise RuntimeError("Policy did not provide a state estimate")
+        self.estimated_lin_vel_body[:] = estimated_state[:3]
+        vx, vy, vz = self.estimated_lin_vel_body
+        print(
+            f"[Estimated velocity | body | m/s] "
+            f"vx={vx:+.4f}, vy={vy:+.4f}, vz={vz:+.4f}",
+            flush=True,
+        )
 
         # action clip -1 1
         self.action = np.clip(self.action, -10.0, 10.0)

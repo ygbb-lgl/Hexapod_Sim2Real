@@ -259,7 +259,7 @@ class HexapodEstimatePolicy:
 
   @property
   def last_estimate(self) -> NDArray[np.float32] | None:
-    """Return a copy of ``[vx, vy, vz, h_RF, ..., h_LB]`` for raw models."""
+    """Return the latest physical state for raw or TorchScript models."""
     if self._last_estimate is None:
       return None
     return self._last_estimate.copy()
@@ -319,6 +319,14 @@ class HexapodEstimatePolicy:
       else:
         assert self._scripted is not None
         action = self._scripted(tensor)
+        # Exports may wrap the recurrent actor in a PolicyWrapper. Read the
+        # updated hidden state without advancing the GRU a second time.
+        actor = getattr(self._scripted, "actor", self._scripted)
+        estimate = actor.estimator_head(actor.hidden_state[-1])
+        self._last_estimate = cast(
+          NDArray[np.float32],
+          estimate.squeeze(0).cpu().numpy().astype(np.float32, copy=True),
+        )
 
     if not isinstance(action, torch.Tensor):
       raise RuntimeError("Policy output is not a tensor")

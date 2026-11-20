@@ -570,7 +570,8 @@ class Controller:
         imu_data = self.imu.get_imu_data()
         grav = self.imu.get_gravity_acceleration()
 
-        tension_value = self.tension_sensor.get_cable_tension()
+        # tension_value = self.tension_sensor.get_cable_tension()
+        tension_value = self.tension_sensor.get_calibrated_tension()
         tension_sensor_valid = tension_value is not None and np.isfinite(tension_value)
         if not tension_sensor_valid:
             tension_value = 0.0
@@ -657,11 +658,15 @@ class Controller:
             dqj_obs * self.dof_vel_scale,
             self.action,
             self.cmd * self.config.command_scale,
-            # max(float(tension_value), 0.0),
-            self.target_tension, # 不对0.0
+            max(float(tension_value), 0.0),
+            #self.target_tension, # 不对0.0
             tether_direction_body,
         )
         self.action = self.policy.predict(self.obs)
+        estimated_state = self.policy.last_estimate
+        if estimated_state is None or not np.isfinite(estimated_state[0]):
+            raise RuntimeError("Policy did not provide a finite estimated vx")
+        estimated_vx = float(estimated_state[0])
 
         # The loader applies the policy-wide +/-10 safety clip. Keep the raw
         # cable action in last_action; clip only the command sent to hardware.
@@ -676,6 +681,8 @@ class Controller:
         # target_dof_pos = self.config.default_angles
         
         target_tension = cable_action * self.config.tension_action_scale
+        if estimated_vx < -0.1:
+            target_tension = max(0.0, float(target_tension) - 30.0)
         self.target_tension = np.float32(target_tension)
 
         for i in range(18):

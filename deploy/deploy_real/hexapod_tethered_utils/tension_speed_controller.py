@@ -134,11 +134,11 @@ class TensionSpeedController:
 
         cmd_vx = float(cmd_speed_input)
         imu_vx = float(imu_speed_input)
-        if abs(imu_vx) < 0.1:
-            v_mps = cmd_vx
-        else:
-            v_mps = 0.9 * imu_vx + 0.1 * cmd_vx
-        v_proj = v_mps * math.cos(yaw_rad)
+        # if abs(imu_vx) < 0.1:
+        #     v_mps = cmd_vx
+        # else:
+        #     v_mps = 0.9 * imu_vx + 0.1 * cmd_vx
+        v_proj = imu_vx * math.cos(yaw_rad)
 
         # Select Kp&Kd based on forward/backward projected motion.
         if v_proj >= 0.0:

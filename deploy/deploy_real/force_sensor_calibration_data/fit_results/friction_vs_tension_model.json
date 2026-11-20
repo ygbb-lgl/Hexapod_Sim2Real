@@ -1,0 +1,32 @@
+{
+  "definition": "equivalent_loss_n = actual_torque_nm / spool_radius_m - gauge_tension_n",
+  "interpretation": "Equivalent total transmission loss, including motor/gearbox/spool, effective-radius error, pulleys and rope bending",
+  "spool_radius_m": 0.06,
+  "sample_count": 177,
+  "torque_folder_count": 32,
+  "model": "Huber robust linear regression",
+  "equation": "F_loss_N = 28.293222 + 0.453103507 * T_gauge_N",
+  "intercept_n": 28.293222011013555,
+  "slope_loss_per_tension": 0.4531035067875577,
+  "cross_validation": {
+    "method": "leave-one-torque-folder-out",
+    "mae_n": 9.952140652410101,
+    "rmse_n": 13.795800627154371,
+    "r2": 0.757632526233404,
+    "max_abs_error_n": 45.91274751109265
+  },
+  "observed_ranges": {
+    "gauge_tension_n": [
+      35.86,
+      280.0
+    ],
+    "equivalent_loss_n": [
+      37.54801246666667,
+      170.6200607
+    ]
+  },
+  "alignment_notes": [
+    "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/force_sensor_calibration_data/5Nm/summary.csv: line 3 ignored manual prefix '35.86N'",
+    "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/force_sensor_calibration_data/6Nm/summary.csv: 6 experiment rows but 5 gauge readings; paired the first 5 by time and skipped the remainder"
+  ]
+}

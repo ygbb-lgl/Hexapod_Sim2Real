@@ -34,6 +34,10 @@ from motor_igh_sdk.deploy_real_el4090_pysoem_spool_torque import (
 TARGET_TORQUE_NM = 4.0
 PRELOAD_TORQUE_NM = 2.0
 
+# 19 号卷线电机的力矩常数。驱动状态缓冲区返回实际电流（A），
+# 实际力矩按项目现有约定由 电流 × 力矩常数 换算得到。
+SPOOL_TORQUE_CONSTANT_NM_PER_A = 2.1
+
 # 按 A 切换到目标力矩后，先等待机械系统稳定，再开始写 CSV。
 STABILIZATION_TIME_S = 5.0
 SAMPLE_RATE_HZ = 50.0
@@ -54,6 +58,7 @@ RAW_COLUMNS = [
     "timestamp",
     "elapsed_s",
     "cmd_torque_nm",
+    "actual_torque_nm",
     "force_x_n",
     "force_y_n",
     "force_z_n",
@@ -61,6 +66,8 @@ RAW_COLUMNS = [
     "force_norm_n",
     "pitch_rad",
     "pitch_deg",
+    "sin_pitch",
+    "cos_pitch",
 ]
 
 SUMMARY_COLUMNS = [
@@ -71,6 +78,8 @@ SUMMARY_COLUMNS = [
     "sample_rate_hz",
     "sample_count",
     "record_duration_s",
+    "mean_cmd_torque_nm",
+    "mean_actual_torque_nm",
     "mean_force_x_n",
     "mean_force_y_n",
     "mean_force_z_n",
@@ -78,6 +87,8 @@ SUMMARY_COLUMNS = [
     "mean_force_norm_n",
     "mean_pitch_rad",
     "mean_pitch_deg",
+    "mean_sin_pitch",
+    "mean_cos_pitch",
     "raw_csv",
 ]
 
@@ -198,12 +209,16 @@ def main() -> int:
     recording_started_at = None
     recording_ended_at = None
     sums = {
+        "cmd_torque_nm": 0.0,
+        "actual_torque_nm": 0.0,
         "force_x_n": 0.0,
         "force_y_n": 0.0,
         "force_z_n": 0.0,
         "force_z_pressure_n": 0.0,
         "force_norm_n": 0.0,
         "pitch_rad": 0.0,
+        "sin_pitch": 0.0,
+        "cos_pitch": 0.0,
     }
 
     try:
@@ -282,15 +297,23 @@ def main() -> int:
             if force_xyz is not None and pitch_rad is not None:
                 fx, fy, fz = (float(value) for value in force_xyz)
                 pitch_rad = float(pitch_rad)
+                cmd_torque_nm = float(robot.spool_command_buffer.target_torque_nm[0])
+                actual_torque_nm = (
+                    SPOOL_TORQUE_CONSTANT_NM_PER_A
+                    * float(robot.spool_state_buffer.torque[0])
+                )
                 force_z_pressure = abs(fz)
                 force_norm = math.sqrt(fx * fx + fy * fy + fz * fz)
+                sin_pitch = math.sin(pitch_rad)
+                cos_pitch = math.cos(pitch_rad)
                 elapsed_s = time.monotonic() - recording_started_at
 
                 writer.writerow(
                     {
                         "timestamp": datetime.now().isoformat(timespec="milliseconds"),
                         "elapsed_s": f"{elapsed_s:.6f}",
-                        "cmd_torque_nm": f"{TARGET_TORQUE_NM:.9f}",
+                        "cmd_torque_nm": f"{cmd_torque_nm:.9f}",
+                        "actual_torque_nm": f"{actual_torque_nm:.9f}",
                         "force_x_n": f"{fx:.9f}",
                         "force_y_n": f"{fy:.9f}",
                         "force_z_n": f"{fz:.9f}",
@@ -298,15 +321,21 @@ def main() -> int:
                         "force_norm_n": f"{force_norm:.9f}",
                         "pitch_rad": f"{pitch_rad:.9f}",
                         "pitch_deg": f"{math.degrees(pitch_rad):.9f}",
+                        "sin_pitch": f"{sin_pitch:.9f}",
+                        "cos_pitch": f"{cos_pitch:.9f}",
                     }
                 )
                 rows += 1
+                sums["cmd_torque_nm"] += cmd_torque_nm
+                sums["actual_torque_nm"] += actual_torque_nm
                 sums["force_x_n"] += fx
                 sums["force_y_n"] += fy
                 sums["force_z_n"] += fz
                 sums["force_z_pressure_n"] += force_z_pressure
                 sums["force_norm_n"] += force_norm
                 sums["pitch_rad"] += pitch_rad
+                sums["sin_pitch"] += sin_pitch
+                sums["cos_pitch"] += cos_pitch
 
             now = time.monotonic()
             if now - last_flush_at >= 1.0:
@@ -365,6 +394,8 @@ def main() -> int:
                 "sample_rate_hz": f"{SAMPLE_RATE_HZ:.6f}",
                 "sample_count": rows,
                 "record_duration_s": f"{duration_s:.6f}",
+                "mean_cmd_torque_nm": f"{means['cmd_torque_nm']:.9f}",
+                "mean_actual_torque_nm": f"{means['actual_torque_nm']:.9f}",
                 "mean_force_x_n": f"{means['force_x_n']:.9f}",
                 "mean_force_y_n": f"{means['force_y_n']:.9f}",
                 "mean_force_z_n": f"{means['force_z_n']:.9f}",
@@ -372,12 +403,16 @@ def main() -> int:
                 "mean_force_norm_n": f"{means['force_norm_n']:.9f}",
                 "mean_pitch_rad": f"{means['pitch_rad']:.9f}",
                 "mean_pitch_deg": f"{math.degrees(means['pitch_rad']):.9f}",
+                "mean_sin_pitch": f"{means['sin_pitch']:.9f}",
+                "mean_cos_pitch": f"{means['cos_pitch']:.9f}",
                 "raw_csv": os.path.basename(raw_csv_path),
             }
             _append_summary(summary_csv_path, summary)
 
             print("\n本次标定统计：")
             print(f"  有效样本数：{rows}")
+            print(f"  电机输入力矩平均值：{means['cmd_torque_nm']:.6f} N·m")
+            print(f"  电机实际力矩平均值：{means['actual_torque_nm']:.6f} N·m")
             print(f"  Z 方向压力大小平均值：{means['force_z_pressure_n']:.6f} N")
             print(f"  Z 方向带符号平均值：{means['force_z_n']:.6f} N")
             print(f"  XYZ 合力平均值：{means['force_norm_n']:.6f} N")

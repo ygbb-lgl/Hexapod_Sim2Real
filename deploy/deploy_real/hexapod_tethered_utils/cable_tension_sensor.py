@@ -46,6 +46,12 @@ TENSION_LPF_ALPHA = 0.8
 CABLE_TENSION_SERIAL_PORT = "/dev/ttyUSB0"  # 按实际设备修改，例如 /dev/ttyACM0
 
 
+def estimate_tension_from_xyz(fx: float, fy: float, fz: float) -> float:
+    """根据三轴力返回标定后的绳索拉力，单位 N。"""
+    tension = -14.1971839 - 0.926052852 * fx + 0.868776996 * fy - 0.394847898 * fz
+    return round(max(0.0, tension), 2)
+
+
 class SensorDataParser:
     """
     解析来自传感器的 M8218 数据帧 (0xAA 0x55 开头)
@@ -256,6 +262,13 @@ class CableTensionSensor:
     def get_force_xyz(self) -> Optional[tuple[float, float, float]]:
         return self.parser.get_force_xyz()
 
+    def get_calibrated_tension(self) -> Optional[float]:
+        """直接返回由 Fx、Fy、Fz 标定得到的拉力，单位 N。"""
+        force_xyz = self.parser.get_force_xyz()
+        if force_xyz is None:
+            return None
+        return estimate_tension_from_xyz(*force_xyz)
+
     def stop(self):
         self.is_running = False
         if self.read_thread:
@@ -280,7 +293,12 @@ if __name__ == "__main__":
                         print(f"cable_tension = {latest:.6f} | raw = {raw:.6f}")
                     else:
                         fx, fy, fz = fxyz
-                        print(f"cable_tension = {latest:.6f} | raw = {raw:.6f} | Fx,Fy,Fz = {fx:.3f},{fy:.3f},{fz:.3f}")
+                        calibrated_tension = estimate_tension_from_xyz(fx, fy, fz)
+                        print(
+                            f"原方法拉力 = {latest:.6f} N | "
+                            f"标定公式拉力 = {calibrated_tension:.6f} N | "
+                            f"Fx,Fy,Fz = {fx:.3f},{fy:.3f},{fz:.3f}"
+                        )
                 time.sleep(0.1)  # 模拟主控制循环提取数据
         except KeyboardInterrupt:
             print("\n正在停止程序...")

@@ -12,11 +12,14 @@ Joint classification (based on hexapod.yaml):
   KFE joints (knee flexion/extension):  policy_idx [2, 5, 8, 11, 14, 17]
 """
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pandas as pd
 import os
 import sys
 import glob
+import re
 
 # Joint classification based on hexapod.yaml
 JOINT_GROUPS = {
@@ -34,109 +37,45 @@ JOINT_NAMES = {
     15: 'LB_HAA', 16: 'LB_HFE', 17: 'LB_KFE',
 }
 
-def plot_all_motors(log_dir):
-    """Plot tracking curves grouped by joint type: HAA, HFE, KFE."""
-    
-    # Find all CSV files in the directory
-    csv_pattern = os.path.join(log_dir, '*.csv')
-    csv_files = sorted(glob.glob(csv_pattern))
-    
-    if not csv_files:
-        print(f"No CSV files found in {log_dir}")
-        print(f"Searched pattern: {csv_pattern}")
-        return
-    
-    print(f"Found {len(csv_files)} motor log files")
-    
-    # Parse all CSV files and organize by policy_idx
+def plot_all_motors(log_dir, output_dir=None):
+    """Save three 2x3 figures of target and actual joint positions."""
+    csv_files = sorted(glob.glob(os.path.join(log_dir, '*_motor_*_policy_idx_*.csv')))
     motor_data = {}
     for csv_file in csv_files:
-        basename = os.path.basename(csv_file)
-        parts = basename.replace('.csv', '').split('_')
-        
-        try:
-            motor_id = parts[1]
-            policy_idx = int(parts[4]) if len(parts) > 4 else int(parts[3])
-            motor_data[policy_idx] = {
-                'csv_file': csv_file,
-                'motor_id': motor_id,
-                'policy_idx': policy_idx,
-                'joint_name': JOINT_NAMES.get(policy_idx, f'Unknown_{policy_idx}')
-            }
-        except (IndexError, ValueError) as e:
-            print(f"Warning: Could not parse {basename}: {e}")
-    
-    # Group by joint type
+        match = re.search(r'_motor_(\d+)_policy_idx_(\d+)\.csv$', os.path.basename(csv_file))
+        if match:
+            motor_id, policy_idx = map(int, match.groups())
+            if policy_idx in motor_data:
+                raise ValueError(f'Duplicate policy index {policy_idx}: {csv_file}')
+            motor_data[policy_idx] = (motor_id, csv_file)
+
+    missing = sorted(set(range(18)) - set(motor_data))
+    if missing:
+        raise ValueError(f'Missing motor CSV files for policy indices: {missing}')
+
+    output_dir = output_dir or log_dir
+    os.makedirs(output_dir, exist_ok=True)
     for joint_type, policy_indices in JOINT_GROUPS.items():
-        print(f"\nGenerating {joint_type} joint plot...")
-        
-        fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-        axes = axes.flatten()
-        
-        for local_idx, policy_idx in enumerate(policy_indices):
-            if policy_idx not in motor_data:
-                print(f"  Warning: No data for policy_idx {policy_idx}")
-                continue
-            
-            data = motor_data[policy_idx]
-            csv_file = data['csv_file']
-            motor_id = data['motor_id']
-            joint_name = data['joint_name']
-            
-            try:
-                df = pd.read_csv(csv_file)
-                
-                ax = axes[local_idx]
-                
-                # Plot target position
-                ax.plot(df['time_step'], df['target_pos'], 'r-', linewidth=2, label='Target Pos')
-                
-                # Plot actual position
-                ax.plot(df['time_step'], df['actual_pos'], 'b-', linewidth=1.5, label='Actual Pos')
-                
-                # Plot error (secondary y-axis)
-                ax_error = ax.twinx()
-                ax_error.plot(df['time_step'], df['error'], 'g--', linewidth=1, alpha=0.7, label='Error')
-                
-                ax.set_xlabel('Time (s)', fontsize=9)
-                ax.set_ylabel('Position (rad)', fontsize=9, color='black')
-                ax.set_title(f'{joint_name} (Motor {motor_id}, IDX {policy_idx})\nError: mean={df["error"].mean():.4f}, std={df["error"].std():.4f}', 
-                            fontsize=10)
-                ax.grid(True, alpha=0.3)
-                ax.tick_params(labelsize=8)
-                
-                # Combine legends
-                lines1, labels1 = ax.get_legend_handles_labels()
-                lines2, labels2 = ax_error.get_legend_handles_labels()
-                ax.legend(lines1 + lines2, labels1 + labels2, loc='upper right', fontsize=8)
-                
-                ax_error.set_ylabel('Error (rad)', fontsize=8, color='green')
-                ax_error.tick_params(labelsize=8, colors='green')
-                
-            except Exception as e:
-                print(f"Error reading {csv_file}: {e}")
-                axes[local_idx].text(0.5, 0.5, f'Error\n{os.path.basename(csv_file)}', 
-                              ha='center', va='center', fontsize=10)
-                axes[local_idx].grid(True)
-        
-        plt.suptitle(f'{joint_type} Joints - Tracking Performance', fontsize=14, fontweight='bold', y=1.02)
-        plt.tight_layout()
-        
-        # Save figure
-        output_file = os.path.join(log_dir, f'{joint_type}_joints_tracking.png')
-        try:
-            plt.savefig(output_file, dpi=150, bbox_inches='tight')
-            print(f"Saved {joint_type} plot to {output_file}")
-        except PermissionError:
-            # Fallback: save to current directory
-            fallback_file = os.path.join(os.getcwd(), f'{joint_type}_joints_tracking.png')
-            print(f"Permission denied: {output_file}")
-            print(f"Saving to current directory instead: {fallback_file}")
-            plt.savefig(fallback_file, dpi=150, bbox_inches='tight')
-        
-        plt.show()
-    
-    print(f"\nGenerated 3 plots (HAA, HFE, KFE)")
+        fig, axes = plt.subplots(2, 3, figsize=(18, 10), sharex=True)
+        for ax, policy_idx in zip(axes.flat, policy_indices):
+            motor_id, csv_file = motor_data[policy_idx]
+            df = pd.read_csv(csv_file)
+            required = {'time_step', 'target_pos', 'actual_pos'}
+            if not required.issubset(df.columns):
+                raise ValueError(f'{csv_file} is missing columns: {sorted(required - set(df.columns))}')
+            ax.plot(df['time_step'], df['target_pos'], color='tab:red', label='Target position')
+            ax.plot(df['time_step'], df['actual_pos'], color='tab:blue', label='Actual position')
+            ax.set_title(f'{JOINT_NAMES[policy_idx]} | Motor {motor_id:02d} | Policy {policy_idx:02d}')
+            ax.set_xlabel('Time (s)')
+            ax.set_ylabel('Position (rad)')
+            ax.grid(alpha=0.3)
+            ax.legend(fontsize=8)
+        fig.suptitle(f'{joint_type} joint position tracking', fontsize=16)
+        fig.tight_layout()
+        output_file = os.path.join(output_dir, f'{joint_type}_joints_tracking.png')
+        fig.savefig(output_file, dpi=180)
+        plt.close(fig)
+        print(f'Saved {output_file}')
 
 
 def plot_individual_motor(csv_file):
@@ -302,4 +241,4 @@ if __name__ == '__main__':
     elif sys.argv[1] == 'single' and len(sys.argv) >= 3:
         plot_individual_motor(sys.argv[2])
     else:
-        plot_all_motors(sys.argv[1])
+        plot_all_motors(sys.argv[1], sys.argv[2] if len(sys.argv) >= 3 else None)

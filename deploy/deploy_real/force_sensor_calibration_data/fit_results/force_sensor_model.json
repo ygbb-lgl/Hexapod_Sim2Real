@@ -1,0 +1,42 @@
+{
+  "model_type": "linear_xyz",
+  "selected_candidate": "xyz_huber",
+  "selection_rule": "Among extrapolation-safe linear candidates within 0.1 N of the best grouped-CV MAE, choose the lowest grouped-CV RMSE",
+  "equation": "T_N = -14.1971839 - 0.926052852*Fx + 0.868776996*Fy - 0.394847898*Fz",
+  "input_order": [
+    "force_x_n",
+    "force_y_n",
+    "force_z_n"
+  ],
+  "intercept_n": -14.19718389574382,
+  "coefficients": {
+    "force_x_n": -0.9260528520142149,
+    "force_y_n": 0.8687769955715848,
+    "force_z_n": -0.3948478977215796
+  },
+  "sample_count": 177,
+  "torque_folder_count": 32,
+  "cross_validation": {
+    "method": "leave-one-torque-folder-out",
+    "mae_n": 3.072140087460108,
+    "rmse_n": 4.599782252628986,
+    "r2": 0.9924365120705727,
+    "max_abs_error_n": 24.120649404113294
+  },
+  "curve_projection": {
+    "observed_force_norm_min_n": 110.73437016759368,
+    "observed_force_norm_max_n": 657.4118667079135,
+    "observed_tension_min_n": 35.86,
+    "observed_tension_max_n": 280.0,
+    "representative_direction_fx": -0.02124359576280596,
+    "representative_direction_fy": 0.014700135635511544,
+    "representative_direction_fz": -0.9996662521318622,
+    "representative_tension_per_force_norm": 0.42715995019257436,
+    "representative_force_norm_at_400_n": 969.6536009731564
+  },
+  "alignment_notes": [
+    "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/force_sensor_calibration_data/5Nm/summary.csv: line 3 ignored manual prefix '35.86N'",
+    "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/force_sensor_calibration_data/6Nm/summary.csv: 6 experiment rows but 5 gauge readings; paired the first 5 by time and skipped the remainder"
+  ],
+  "source_root": "/home/lgl/Hexapod_Sim2Real/deploy/deploy_real/force_sensor_calibration_data"
+}
